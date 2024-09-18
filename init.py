@@ -109,7 +109,7 @@ if __name__ == '__main__':
           `id` int(10) UNSIGNED NOT NULL PRIMARY KEY,
           `father` int(255) UNSIGNED NOT NULL,
           `useable` int(2) NOT NULL DEFAULT 1,
-          `wis` text NOT NULL,
+          `wis` text,
           `do` text,
           FOREIGN KEY (father) REFERENCES item_list(id)
           ON UPDATE CASCADE
@@ -120,7 +120,6 @@ if __name__ == '__main__':
             # `name` 实名
             # `root` 管理 1是0否   
         'members': '''CREATE TABLE `members` (
-          `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
           `user_id` text NOT NULL,
           `name` text NOT NULL,
           `root` int(1) NOT NULL DEFAULT 0
@@ -194,68 +193,117 @@ if __name__ == '__main__':
 
     # 预设一些值
     inserts = {
-        'item_category': '''
-        INSERT INTO item_category(`name`)
-        VALUES 
-            ('裁判系统'),
-            ('电机'),
-            ('机械物资'),
-            ('其他');
-        ''',
-        'item_list_referee': '''
-        INSERT INTO item_list (`id`, `father`, `name`)
-        VALUES 
-            ('001001', '1', '主控模块'),
-            ('001002', '1', '电源管理'),
-            ('001003', '1', '灯条模块'),
-            ('001004', '1', '装甲模块'),
-            ('001005', '1', '测速模块'),
-            ('001006', '1', '场地交互模块'),
-            ('001007', '1', '相机图传模块'),
-            ('001008', '1', '定位模块'),
-            ('001009', '1', '超级电容管理模块'),
-            ('001010', '1', '飞镖触发装置'),
-            ('001011', '1', '图传接收端'),
-            ('001012', '1', '图传供电器'),
-            ('001013', '1', '官方航空线');
-        ''',
-        'item_list_motor': '''
-        INSERT INTO item_list (`id`, `father`, `name`)
-        VALUES 
-            ('002001', '2', 'DJI_3508电机'),
-            ('002002', '2', 'DJI_6020电机'),
-            ('002003', '2', 'DJI_2006电机');
-        ''',
-        'item_list_mechanical': '''
-        INSERT INTO item_list (`id`, `father`, `name`)
-        VALUES 
-            ('003001', '3', 'M3螺丝刀'),
-            ('003002', '3', 'M2.5螺丝刀'),
-            ('003003', '3', 'M4螺丝刀'),
-            ('003004', '3', 'M2螺丝刀'),
-            ('003005', '3', '剪刀'),
-            ('003006', '3', '水口钳');
-        ''',
-        'item_list_consumable': '''
-        INSERT INTO item_list (`id`, `father`, `name`)
-        VALUES 
-            ('004001', '4', '打印料-PLA-白'),
-            ('004002', '4', '打印料-PLA-灰'),
-            ('004003', '4', 'micro数据线'),
-            ('004004', '4', 'typeC数据线'),
-            ('004005', '4', '电池架'),
-            ('004006', '4', '达妙板子'),
-            ('004007', '4', 'C板'),
-            ('004008', '4', 'USB2UART'),
-            ('004009', '4', '达妙USB2CAN'),
-            ('004010', '4', 'J-Link'),
-            ('004011', '4', '排插');
-        '''        
+        'item_category': {
+            'table':'item_category',
+            'key':['name'],
+            'value':['裁判系统','电机','机械物资','其他']
+        },
+        'item_list_referee': {
+            'table':'item_list',
+            'father_table':'item_category',
+            'father_name':'裁判系统',
+            'key':['name'],
+            'value':[
+                '主控模块',
+                '电源管理',
+                '装甲模块',
+                '测速模块',
+                '灯条模块',
+                '场地交互模块',
+                '相机图传模块',
+                '定位模块',
+                '超级电容管理模块',
+                '飞镖触发装置',
+                '图传接收端',
+                '图传供电器',
+                '官方航空线'
+            ]
+        },
+        'item_list_motor': {
+            'table':'item_list',
+            'father_table':'item_category',
+            'father_name':'电机',
+            'key':['name'],
+            'value':[
+                'DJI_3508电机',
+                'DJI_6020电机',
+                'DJI_2006电机'
+            ]
+        },
+        'item_list_mechanical': {
+            'table':'item_list',
+            'father_table':'item_category',
+            'father_name':'机械物资',
+            'key':['name'],
+            'value':[
+                'M3螺丝刀',
+                'M2.5螺丝刀',
+                'M4螺丝刀',
+                'M2螺丝刀',
+                '剪刀',
+                '水口钳'
+            ]
+        },  
+        'item_list_consumable':{
+            'table':'item_list',
+            'father_table':'item_category',
+            'father_name':'其他',
+            'key':['name'],
+            'value':['打印料-PLA-白', 
+                     '打印料-PLA-灰',
+                     'micro数据线',
+                     'typeC数据线',
+                     '电池架',
+                     '达妙板子',
+                     'C板',
+                     'USB2UART',
+                     '达妙USB2CAN',
+                     'J-Link',
+                     '排插']
+        }  
     }
-    for table_name, create_sql in inserts.items():
-            cursor.execute(create_sql)
-            print(f"已插入初值{table_name}")
-    conn.commit()
+    for key, param in inserts.items():
+            print(f"尝试给表 {param['table'].ljust(16)} 添加初值 {key}")
+
+            # 查找父记录
+            if param.get('father_table'):
+                sql = "SELECT SQL_NO_CACHE * FROM {} WHERE name = %s".format(param['father_table'])
+                cursor.execute(sql, (param['father_name']))
+                father = cursor.fetchone()
+                if not father:
+                    print(f"父记录 {param['father_name'].ljust(16)} 未找到，跳过插入")
+                    continue
+            
+            for value in param['value']:
+                # 检查是否已经存在记录
+                sql = "SELECT * FROM {} WHERE name = %s".format(param['table'])
+                cursor.execute(sql, (value,))
+                existing_record = cursor.fetchone()
+                
+                KeyTable = ''
+                ValueTable = ''
+                if not existing_record:
+                    KeyTable = ', '.join(param['key'])
+                    ValueTable = ', '.join(['%s'] * len(param['key']))
+                    values = [value]
+                    if param.get('father_table'):
+                        KeyTable += ', father, id'
+                        ValueTable += ', %s, %s'
+                        values.append(father[0])
+
+                        sql = "SELECT SQL_NO_CACHE * FROM {} WHERE father = %s".format(param['table'])
+                        cursor.execute(sql, (father[0]))
+                        result = cursor.fetchall()
+                        new_id = (1000*father[0]) + (int(result[-1][0])%1000 + 1 if result else 1)
+                        values.append(new_id)
+                    sql = "INSERT INTO {} ({}) VALUES ({});".format(param['table'], KeyTable, ValueTable)
+                    cursor.execute(sql, tuple(values))
+                    print(f"\t已插入初值 {value}")
+                    conn.commit()
+                else:
+                    print(f"\t初值 {value:<{16}}\t已存在，跳过")
+            
+            
 
     conn.close()
 

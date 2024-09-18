@@ -82,15 +82,17 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
                 }
             }
         }
-
+    
     json_string = ujson.dumps(data)
     message_api_client.send_interactive_with_user_id(user_id, json_string)
     return jsonify()
 
 @event_manager.register("card.action.trigger")
 def card_action_event_handler(req_data: CardActionEvent):
-    user_id = req_data.event.operator.operator_id.user_id
-    value = req_data.event.action.value
+    user_id = req_data.event.operator.user_id
+    action = req_data.event.action
+
+    return jsonify()
 
 @app.errorhandler
 def msg_error_handler(ex):
@@ -108,6 +110,7 @@ def callback_event_handler():
     json_data = request.get_json()
     if json_data is not None:
         # 将 JSON 数据写入 'request.json' 文件
+        #todo:调试用，记得删
         with open('request.json', 'w') as f:
             json_str = ujson.dumps(json_data, indent=4)  # 格式化写入 JSON 文件
             f.write(json_str)

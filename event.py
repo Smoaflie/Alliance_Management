@@ -8,7 +8,7 @@ from utils import dict_2_obj
 from flask import request, jsonify
 from decrypt import AESCipher
 
-
+#todo:图省事，将事件和回调写在一起，也许部分地方一些区别（find:@)
 class Event(object):
     callback_handler = None
 
@@ -21,7 +21,9 @@ class Event(object):
             raise InvalidEventException("request is not callback event(v2)")
         self.header = dict_2_obj(header)
         self.event = dict_2_obj(event)
-        self._validate(token, encrypt_key)
+        #当未配置Encrypt Key 加密策略时，回调请求头不含X-Lark-Request-Timestamp等内容,将引发错误
+        if request.headers.get("X-Lark-Request-Timestamp"):
+            self._validate(token, encrypt_key)
 
     def _validate(self, token, encrypt_key):
         if self.header.token != token:

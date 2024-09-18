@@ -1,7 +1,7 @@
 import api_mysql
 
 class ApiManagement(object):
-    def __init__(self, sql):
+    def __init__(self, sql : api_mysql.MySql):
         self.sql = sql
 
     
@@ -64,9 +64,7 @@ class ApiManagement(object):
         return self.return_itemTable_by_info(info)
 
     def add_member(self, user_id, user_name):
-        print(self.sql.fetchone('members', 'user_id', user_id),flush=True)
         if not self.sql.fetchone('members', 'user_id', user_id):
-            print('a')
             ins = {
                 'user_id':user_id,
                 'name': user_name
@@ -74,3 +72,51 @@ class ApiManagement(object):
             self.sql.insert('members', ins)
             self.sql.commit()
             print('add done')
+
+    def add_item(self, father, num):
+        for i in range(num):
+            # 查找父记录
+            father_recoder = self.sql.fetchone('item_list', 'id', 'father')
+            if not father_recoder:
+                print(f"父记录 Id:{father} 未找到，跳过插入")
+                return
+            # 设置Id，进行添加
+            self_recoder = self.sql.fetchall('iten_info', 'father', father)
+            new_id = (1000*father) + (int(self_recoder[-1][0])%1000000 + 1 if self_recoder else 1)
+            self.sql.insert('item_info', {
+                'id':new_id,
+                'father':father,
+            })
+        self.sql.commit()
+    def add_list(self, father, name):
+        # 查找父记录
+        father_recoder = self.sql.fetchone('item_category', 'id', 'father')
+        if not father_recoder:
+            print(f"父记录 Id:{father} 未找到，跳过插入")
+            return
+        # 查找是否已存在
+        self_recoder = self.sql.fetchone('iten_list', 'name', name)
+        if self_recoder:
+            print(f"当前列表 {name} 已存在")
+            return
+        # 设置Id，进行添加
+        self_recoder = self.sql.fetchall('iten_list', 'father', father)
+        new_id = (1000*father) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
+        self.sql.insert('item_info', {
+            'id':new_id,
+            'father':father,
+            'name':name
+        })
+    def add_category(self, name):
+        # 查找是否已存在
+        self_recoder = self.sql.fetchone('iten_category', 'name', name)
+        if self_recoder:
+            print(f"当前类 {name} 已存在")
+            return
+        # 设置Id，进行添加
+        self_recoder = self.sql.getall('iten_category')
+        new_id = (int(self_recoder[-1][0]) + 1 if self_recoder else 1)
+        self.sql.insert('item_info', {
+            'id':new_id,
+            'name':name
+        })

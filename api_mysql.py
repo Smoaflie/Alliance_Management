@@ -46,27 +46,24 @@ class MySql:
             value = "'%s'" % value
         else:
             value = str(value)
-        sql = "SELECT SQL_NO_CACHE * from %s WHERE %s = %s" % (table, key, value)
-        self.__cursor.execute(sql)
-        result = self.__cursor.fetchone()
-        if result is not None:
+        sql = f"SELECT SQL_NO_CACHE * from {table} WHERE {key} = %s"
+        try:
+            self.__cursor.execute(sql,(value,))
+            result = self.__cursor.fetchone()
             return result
-        else:
-            return None
+        except Exception as e:
+            raise Exception(f"Error occurred while fetching data: {str(e)}") from e
 
     def fetchall(self, table, key, value):
         self.refresh()
-        if isinstance(value, str):
-            value = "'%s'" % value
-        else:
-            value = str(value)
-        sql = "SELECT SQL_NO_CACHE * from %s WHERE %s = %s" % (table, key, value)
+
+        sql = f"SELECT SQL_NO_CACHE * from {table} WHERE {key} = %s"
         try:
-            self.__cursor.execute(sql)
+            self.__cursor.execute(sql,(value,))
             result = self.__cursor.fetchall()
             return result
         except Exception as e:
-            raise MySqlError("Error happen when get date !")
+            raise Exception(f"Error occurred while fetching data: {str(e)}") from e
 
     def getall(self, table):
         self.refresh()
@@ -75,28 +72,19 @@ class MySql:
             self.__cursor.execute(sql)
             result = self.__cursor.fetchall()
             return result
-        except:
-            raise MySqlError("Error happen when get date !")
+        except Exception as e:
+            raise Exception(f"Error occurred while fetching data: {str(e)}") from e
 
     def insert(self, table, data):
         self.refresh()
-        KeyTable = ''
-        ValueTable = ''
-        for key, value in data.items():
-            if isinstance(value, str):
-                value = "'%s'" % value
-            else:
-                value = str(value)
-            if value == '\'\'' or value is None or value == 'None':
-                value = 'NULL'
-            KeyTable += key + ', '
-            ValueTable += value + ', '
-        sql = "INSERT INTO %s" \
-              "(%s) " \
-              "VALUES" \
-              "(%s);" % (table, KeyTable[:-2], ValueTable[:-2])
+        keys = data.keys()
+        values = tuple(data.values())
 
-        self.__cursor.execute(sql)
+        KeyTable = ', '.join(keys)
+        ValueTable = ', '.join(['%s'] * len(keys))
+
+        sql = f"INSERT INTO {table} ({KeyTable}) VALUES ({ValueTable})"
+        self.__cursor.execute(sql,values)
 
     def update(self, table, key, updates):
         """
@@ -107,37 +95,22 @@ class MySql:
         :param updates: 更新字段及其新值的字典，例如 {'column1': 'new_value1', 'column2': 'new_value2'}
         """
         self.refresh()
-        # 处理更新的字段
-        set_clause = []
-        for col, val in updates.items():
-            if isinstance(val, str):
-                val = "'%s'" % val
-            else:
-                val = str(val)
-            if val == "''" or val is None or val == 'None':
-                val = 'NULL'
-            set_clause.append(f"{col} = {val}")
-        set_clause_str = ', '.join(set_clause)
-        
-        # 处理WHERE子句
+        # 处理更新的字段，使用占位符
+        set_clause = ', '.join([f"{col} = %s" for col in updates.keys()])
+        # 处理 WHERE 子句
         key_col, key_val = key
-        if isinstance(key_val, str):
-            key_val = "'%s'" % key_val
-        else:
-            key_val = str(key_val)
-        if key_val == "''" or key_val is None or key_val == 'None':
-            key_val = 'NULL'
-        sql = f"UPDATE {table} SET {set_clause_str} WHERE {key_col} = {key_val}"
-        self.__cursor.execute(sql)
+
+        sql = f"UPDATE {table} SET {set_clause} WHERE {key_col} = %s"
+
+        # 将更新字段的值和 key_val 一起作为参数传递给 execute
+        values = list(updates.values()) + [key_val]
+        self.__cursor.execute(sql, values)
+
 
     def remove(self, table, key, value):
         self.refresh()
-        if isinstance(value, str):
-            value = "'%s'" % value
-        else:
-            value = str(value)
-        sql = "DELETE FROM %s WHERE %s = %s" % (table, key, value)
-        self.__cursor.execute(sql)
+        sql = f"DELETE FROM {table} WHERE {key} = %s"
+        self.__cursor.execute(sql,(value,))
 
     def commit(self):
         try:

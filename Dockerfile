@@ -6,7 +6,5 @@ WORKDIR /home/app
 ADD requirements.txt /home/app
 RUN pip install --no-cache-dir -r requirements.txt
 
-ADD . /home/app
-
 EXPOSE 3000
         

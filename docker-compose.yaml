@@ -42,6 +42,8 @@ services:
     command: python3 ./init.py  # 运行初始化脚本
     depends_on:
       - mysql  # 确保 MySQL 服务已启动
+    volumes:
+      - ./:/home/app  # 挂载本地目录到容器中
     networks:
       - management-network
     # 自动退出后不重启
