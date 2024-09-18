@@ -1,0 +1,23 @@
+{
+    "schema": "2.0",
+    "header": {
+        "event_id": "8b8f0271b2e8a893302688ac5f669a26",
+        "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
+        "create_time": "1726598887000",
+        "event_type": "application.bot.menu_v6",
+        "tenant_key": "15874fbe83c4d75f",
+        "app_id": "cli_a6687b8d5973100b"
+    },
+    "event": {
+        "event_key": "custom_menu.inspect.\u673a\u68b0\u7269\u8d44",
+        "operator": {
+            "operator_id": {
+                "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
+                "union_id": "on_39c045cdfce9993e11416da69de0d585",
+                "user_id": "f1549d18"
+            },
+            "operator_name": "\u6768\u6668\u7fd4"
+        },
+        "timestamp": 1726598887
+    }
+}

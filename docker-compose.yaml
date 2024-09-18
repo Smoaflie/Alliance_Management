@@ -1,0 +1,52 @@
+services:
+  python: 
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: management_python
+    env_file: 
+      - .env  # 使用 --env-file 指定的环境变量文件
+    ports:
+      - "3000:3000"  # 将宿主机端口 3000 映射到容器端口 3000
+    volumes:
+      - ./:/home/app  # 挂载本地目录到容器中
+    depends_on:
+      - mysql
+      - python-init
+    command: python3 ./server.py  # 运行初始化脚本
+    container_name:
+      management-python
+    networks:
+      - management-network
+  mysql:
+    image: mysql:5.7
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=mysql # 这里改成你想要的密码
+    volumes:
+      - ./datasheet/:/var/lib/mysql
+      - ./my.cnf:/etc/mysql/conf.d/my.cnf  # 映射自定义的my.cnf
+    container_name:
+      management-mysql
+    networks:
+      - management-network
+
+  # 初始化 MySQL 数据库的服务
+  python-init:
+    build:   # 使用与 python 服务相同的构建
+      context: .
+      dockerfile: Dockerfile
+    image: management_python
+    container_name: management-python-init
+    command: python3 ./init.py  # 运行初始化脚本
+    depends_on:
+      - mysql  # 确保 MySQL 服务已启动
+    networks:
+      - management-network
+    # 自动退出后不重启
+    restart: "no"
+
+networks:
+  management-network:
+    driver: bridge  # 使用默认的桥接网络驱动
