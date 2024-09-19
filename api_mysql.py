@@ -42,10 +42,6 @@ class MySql:
 
     def fetchone(self, table, key, value):
         self.refresh()
-        if isinstance(value, str):
-            value = "'%s'" % value
-        else:
-            value = str(value)
         sql = f"SELECT SQL_NO_CACHE * from {table} WHERE {key} = %s"
         try:
             self.__cursor.execute(sql,(value,))
@@ -101,7 +97,7 @@ class MySql:
         key_col, key_val = key
 
         sql = f"UPDATE {table} SET {set_clause} WHERE {key_col} = %s"
-
+        
         # 将更新字段的值和 key_val 一起作为参数传递给 execute
         values = list(updates.values()) + [key_val]
         self.__cursor.execute(sql, values)

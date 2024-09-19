@@ -97,7 +97,8 @@ if __name__ == '__main__':
           `father` int(255) UNSIGNED NOT NULL,
           `name` text NOT NULL,
           `total` int(6) NOT NULL DEFAULT 0,
-          `free` int(6) NOT NULL DEFAULT 0
+          `free` int(6) NOT NULL DEFAULT 0,
+          `bad` int(6) NOT NULL DEFAULT 0
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
         #  存储物资详细信息  
             # `id` 11位对象ID，前6位为对应物品ID
@@ -192,6 +193,7 @@ if __name__ == '__main__':
             print(f"触发器 {trigger_name} 已存在，跳过创建")
 
     # 预设一些值
+    '''
     inserts = {
         'item_category': {
             'table':'item_category',
@@ -302,7 +304,7 @@ if __name__ == '__main__':
                     conn.commit()
                 else:
                     print(f"\t初值 {value:<{16}}\t已存在，跳过")
-            
+    '''
             
 
     conn.close()
