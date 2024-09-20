@@ -95,7 +95,7 @@ class ApiManagement(object):
                 self.sql.insert('members', user)
         self.sql.commit()
 
-    def add_item(self, father=None, num=1, father_name=None, num_bad=None, category_name=None, category_id=None):
+    def add_item(self, father=None, num=1, father_name=None, num_broken=None, category_name=None, category_id=None):
         # 查找父记录
         if father:
             father_recoder = self.sql.fetchone('item_list', 'id', father)
@@ -120,12 +120,12 @@ class ApiManagement(object):
                 'id':new_id+i,
                 'father':father,
             })
-        if num_bad:
-            for i in range(num_bad):
+        if num_broken:
+            for i in range(num_broken):
                 self.sql.update('item_info', ('id',i+new_id), {'useable':3})
         self.sql.commit()
 
-    def add_items_until_limit(self, father=None, num=1, father_name=None, num_bad=None, category_name=None, category_id=None):
+    def add_items_until_limit(self, father=None, num=1, father_name=None, num_broken=None, category_name=None, category_id=None):
         if father:
             father_recoder = self.sql.fetchone('item_list', 'id', father)
         elif father_name:
@@ -134,8 +134,8 @@ class ApiManagement(object):
             raise Exception("缺少必要的参数")
         if father_recoder:
             num = father_recoder[3] - num if father_recoder[3] - num > 0 else 0
-            num_bad = father_recoder[3] - father_recoder[5]
-        self.add_item(father,num,father_name,num_bad,category_name,category_id)
+            num_broken = father_recoder[3] - father_recoder[5]
+        self.add_item(father,num,father_name,num_broken,category_name,category_id)
 
 
     def add_list(self, father=None, father_name=None, name=None):

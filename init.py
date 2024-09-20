@@ -98,7 +98,7 @@ if __name__ == '__main__':
           `name` text NOT NULL,
           `total` int(6) NOT NULL DEFAULT 0,
           `free` int(6) NOT NULL DEFAULT 0,
-          `bad` int(6) NOT NULL DEFAULT 0
+          `broken` int(6) NOT NULL DEFAULT 0
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
         #  存储物资详细信息  
             # `id` 11位对象ID，前6位为对应物品ID
@@ -146,11 +146,12 @@ if __name__ == '__main__':
                 UPDATE item_list
                 SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
                     free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1)
+                    broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
                 WHERE id = NEW.father;
 
                 UPDATE item_category
                 SET total = (SELECT SUM(total) FROM item_list WHERE father = NEW.father)
-                WHERE id = NEW.father;
+                WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
             END;
         ''',
         'update_item_total_free_on_delete': '''
@@ -161,11 +162,12 @@ if __name__ == '__main__':
                 UPDATE item_list
                 SET total = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father),
                     free = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 1)
+                    broken = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 3)
                 WHERE id = OLD.father;
 
                 UPDATE item_category
                 SET total = (SELECT SUM(total) FROM item_list WHERE father = OLD.father)
-                WHERE id = OLD.father;
+                WHERE id = (SELECT father FROM item_list WHERE id = OLD.father);
             END;
         ''',
         'update_item_total_free_after_update': '''
@@ -176,11 +178,12 @@ if __name__ == '__main__':
                 UPDATE item_list
                 SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
                     free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1)
+                    broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
                 WHERE id = NEW.father;
 
                 UPDATE item_category
                 SET total = (SELECT SUM(total) FROM item_list WHERE father = NEW.father)
-                WHERE id = NEW.father;
+                WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
             END;
         '''
     }

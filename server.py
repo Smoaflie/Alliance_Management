@@ -384,8 +384,8 @@ def getItemsBySheets():
         category_name = item[0]
         item_name = item[1]
         item_num_total = item[2] if item[2] else 1
-        item_num_bad = item[3] if item[3] else 0
-        management.add_items_until_limit(father_name=item_name, category_name=category_name, num=item_num_total, num_bad=item_num_bad)
+        item_num_broken = item[3] if item[3] else 0
+        management.add_items_until_limit(father_name=item_name, category_name=category_name, num=item_num_total, num_bad=item_num_broken)
 
 if __name__ == "__main__":
     # 连接mysql服务器
