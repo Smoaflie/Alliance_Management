@@ -1,34 +1,32 @@
 {
     "schema": "2.0",
     "header": {
-        "event_id": "3987608762ce3e01ce708f5f0c914dd6",
+        "event_id": "41ffcd4f8bc1d2f1994824d8db20c83a",
         "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-        "create_time": "1726781345723369",
-        "event_type": "card.action.trigger",
+        "create_time": "1726843769000",
+        "event_type": "application.bot.menu_v6",
         "tenant_key": "15874fbe83c4d75f",
         "app_id": "cli_a6687b8d5973100b"
     },
     "event": {
+        "event_key": "custom_menu.test",
         "operator": {
-            "tenant_key": "15874fbe83c4d75f",
-            "user_id": "f1549d18",
-            "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
-            "union_id": "on_39c045cdfce9993e11416da69de0d585"
+            "operator_id": {
+                "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
+                "union_id": "on_39c045cdfce9993e11416da69de0d585",
+                "user_id": "f1549d18"
+            },
+            "operator_name": "\u6768\u6668\u7fd4"
         },
-        "token": "c-683eaab10c2ab8ba9bd3aeedc974e7e974097024",
-        "action": {
-            "value": {
-                "name": "object.inspect",
-                "object_param_1": "2012006",
-                "object_param_2": "\u8235\u673a",
-                "object_param_3": "\u53ef\u7528",
-                "title": "\u7269\u54c1\u8be6\u60c5"
+        "timestamp": 1726843769
+    }
+}              "name": "object.apply"
             },
             "tag": "button"
         },
         "host": "im_message",
         "context": {
-            "open_message_id": "om_bc96e804421da0b78aecf6d7a8c4b4d0",
+            "open_message_id": "om_2a68e0a613c532957feae5e95df6fdc7",
             "open_chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad"
         }
     }

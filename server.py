@@ -3,14 +3,18 @@
 import os
 import logging
 import requests
-from api_client import MessageApiClient, SpreadsheetApiClient, ContactApiClient, CloudApiClient
-from event import MessageReceiveEvent, UrlVerificationEvent, EventManager, BotMenuClickEvent, CardActionEvent
+from scripts.api.api_client import MessageApiClient, SpreadsheetApiClient, ContactApiClient, CloudApiClient
+from scripts.api.api_event import MessageReceiveEvent, UrlVerificationEvent, EventManager, BotMenuClickEvent, CardActionEvent
 from flask import Flask, jsonify, request, abort
 from dotenv import load_dotenv, find_dotenv
-from api_management import ApiManagement
-import api_mysql as mysql
+from scripts.api.api_management import ApiManagement
+from scripts.api import api_mysql as mysql
+from scripts.api.api_self import debug
 import ujson
 import datetime
+import hashlib
+
+# from scripts.api import debug
 
 # load env parameters form file named .env
 load_dotenv(find_dotenv())
@@ -23,7 +27,6 @@ APP_SECRET = os.getenv("APP_SECRET")
 VERIFICATION_TOKEN = os.getenv("VERIFICATION_TOKEN")
 ENCRYPT_KEY = os.getenv("ENCRYPT_KEY")
 LARK_HOST = os.getenv("LARK_HOST")
-ITEM_SHEET_TOKEN = os.getenv("ITEM_SHEET_TOKEN")
 
 # init service
 spreadsheet_api_client = SpreadsheetApiClient(APP_ID, APP_SECRET, LARK_HOST)
@@ -70,53 +73,78 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
     
     if event_key == 'custom_menu.inspect.items':
     #获取全部物品类型，配置映射
-        category = management.get_category()
-        data = {
-            'template_id':'AAq7rfpwDmKrO',
-            'template_variable':{
-                'title': '物资类别总览',
-                'object_list':[{'param1': str(id_), 'param2': name_, 'param3': str(total_)} 
-                        for id_, name_, total_ in zip(category['id'], category['name'], category['total'])],
-                'column_title_1': 'ID',
-                'column_title_2': '名称',
-                'column_title_3': '列表数',
-                'column_title_4': '查看'
-            }
-        }
-
-        context = {
+        content = {
             'type':'template',
-            'data':data
+            'data':create_card(object_id='0')
         }
-        message_api_client.send_interactive_with_user_id(user_id, ujson.dumps(context))
-    # event_map = {f'custom_menu.inspect.{name_}': {
-    #         'id':id_,
-    #         'name':name_
-    #     } for id_, name_ in zip(category['id'], category['name'])}
-    
-    # category_target = event_map.get(event_key)
-    # if not category_target:
-    #     raise Exception(f'无法处理事件 {event_key}')
-    
-    # category_name = category_target['name']
-    # category_id = category_target['id']
-    # if category_id is not None:
-    #     item_list = management.get_list(category_id)
-    #     object_list = [{'category': category_name, 'name': name_, 'num': str(total_)} 
-    #                     for name_, total_ in zip(item_list['name'], item_list['total'])]
-        
-    
-        
-
+        message_api_client.send_interactive_with_user_id(user_id, ujson.dumps(content))
     elif event_key == 'custom_menu.test':
         #todo:调试用，记得删
-        # category = management.get_category()
-        # with open('request.json', 'w') as f:
-        #     f.write(str(category))
-        #     f.close()
-        return jsonify()
+        content = {
+            'type':'template',
+            'data':create_card(object_id='1001001')
+        }
+        content['data']['template_variable']['param1'] = str(content['data']['template_variable']['param1'])
+        message_api_client.send_interactive_with_user_id(user_id, ujson.dumps(content))
+        
+        # return jsonify()
     return jsonify()
+def create_card(object_id=None, father_id=None):
+    title_map = {
+        '1':{'template_id':'AAq7rfpwDmKrO', 'table':'item_category', 'title':"物资类型", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':""},
+        '2':{'template_id':'AAq7rfpwDmKrO', 'table':'item_list', 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':""},
+        '3':{'template_id':'AAq7rfpwDmKrO', 'table':'item_info', 'title':"物资仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态', 'param4':""},
+        '4':{'template_id':'AAq7gOddRQSIf', 'table':'item_info', 'title':"", 'param1':'', 'param2':'', 'param3':'', 'param4':""}
+    }
+    if object_id:
+        object_id = int(object_id)
+        _father_id = str(object_id)
+        title_id = '1' if object_id==0 else ('2' if object_id < 1000 else ('3' if object_id < 1000000 else '4') )
+        _id = object_id
+    elif father_id:
+        father_id = int(father_id)
+        _father_id = str(int(father_id/1000))
+        title_id = '1' if father_id<1000 else ('2' if father_id < 1000000 else '3')
+        _id = _father_id
+    else:
+        raise Exception("参数错误")
+    
+    if title_id == '1':
+        _list = management.get_category()
+        object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_), 'id':id_} 
+                    for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])]
+    elif title_id == '2':
+        _list = management.get_list(father=_id)
+        object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_), 'id':id_} 
+                    for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])]
+    elif title_id == '3':
+        _list = management.get_items(father=_id)
+        object_list =[{'param1': id_, 'param2': name_, 'param3': useable_, 'id':id_} 
+                    for id_, name_, useable_ in zip(_list['id'], _list['name'], _list['useable'])]
+    else:
+        object_list = []
+        _item = management.get_item(oid=_id)
+        title_map[title_id]['title'] = f"您正在查看 {_item['name']} 详细信息"
+        title_map[title_id]['param1'] = str(_item['id'])
+        title_map[title_id]['param2'] = _item['useable']
+        title_map[title_id]['param3'] = _item['wis']
+        title_map[title_id]['param4'] = _item['do']
 
+    data = {
+        'template_id':title_map[title_id]['template_id'],
+        'template_variable':{
+            'title': title_map[title_id]['title'],
+            'title_id': title_id,
+            'object_list':object_list,
+            'param1': title_map[title_id]['param1'],
+            'param2': title_map[title_id]['param2'],
+            'param3': title_map[title_id]['param3'],
+            'param4': title_map[title_id]['param4'],
+            'father_id':_father_id
+        }
+    }
+    return data
+        
 @event_manager.register("card.action.trigger")
 def card_action_event_handler(req_data: CardActionEvent):
     user_id = req_data.event.operator.user_id
@@ -125,62 +153,13 @@ def card_action_event_handler(req_data: CardActionEvent):
     toast=None
     data=None
 
-    if action.value.name == 'object.delete':
-        category = management.get_category()
-        data = {
-            'template_id':'AAq7rfpwDmKrO',
-            'template_variable':{
-                'title': '物资类别总览',
-                'object_list':[{'param1': str(id_), 'param2': name_, 'param3': str(total_)} 
-                        for id_, name_, total_ in zip(category['id'], category['name'], category['total'])],
-                'column_title_1': 'ID',
-                'column_title_2': '名称',
-                'column_title_3': '列表数',
-                'column_title_4': '查看'
-            }
-        }
-    elif action.value.name == 'object.inspect':
-        if action.value.title == '物资类别总览':
-            item_category_id = action.value.object_param_1
-            item_category_name = action.value.object_param_2
-            item_list = management.get_list(item_category_id)
-
-            data = {
-                'template_id':'AAq7rfpwDmKrO',
-                'template_variable':{
-                    'title': '类物资列表',
-                    'object_list':[{'param1': item_category_name, 'param2': name_, 'param3': str(total_)} 
-                            for name_, total_ in zip(item_list['name'], item_list['total'])],
-                    'column_title_1': '类型',
-                    'column_title_2': '名称',
-                    'column_title_3': '数量',
-                    'column_title_4': '查看'
-                }
-            }
-        elif action.value.title == '类物资列表' or action.value.title == '物品详情':
-            item_list_name = action.value.object_param_2
-            item_info = management.get_items(father_name=item_list_name)
-
-            data = {
-                'template_id':'AAq7rfpwDmKrO',
-                'template_variable':{
-                    'title': '物品详情',
-                    'object_list':[{'param1': str(id_), 'param2': item_info['name'], 'param3': str(total_)} 
-                            for id_, total_ in zip(item_info['id'], item_info['useable'])],
-                    'column_title_1': 'ID',
-                    'column_title_2': '名称',
-                    'column_title_3': '状态',
-                    'column_title_4': '查看'
-                }
-            }
-            if action.value.title == '物品详情':
-                item = management.get_item(action.value.object_param_1)
-                print(item)
-                toast = {
-                    'type': 'info',
-                    'content': f"该物品正在 {item['wis']} \n备注: {item['do']}"
-                }
-
+    if action.value.name == 'object.inspect':
+        data = create_card(object_id=action.value.id)
+    elif action.value.name == 'back':
+        data = create_card(father_id=action.value.id)
+    elif action.value.name == 'object.apply':
+        member = management.get_member(user_id)
+        print(member)
     request_data = {
         'toast':toast if toast else {},
         "card":{
@@ -191,21 +170,13 @@ def card_action_event_handler(req_data: CardActionEvent):
 
     return jsonify(request_data)
 
-
 @app.route("/", methods=["POST"])
-def callback_event_handler():
-    # 获取 JSON 数据
-    json_data = request.get_json()
-    if json_data is not None:
-        # 将 JSON 数据写入 'request.json' 文件
-        #todo:调试用，记得删
-        with open('request.json', 'w') as f:
-            json_str = ujson.dumps(json_data, indent=4)  # 格式化写入 JSON 文件
-            f.write(json_str)
-            f.close()
+def callback_event_handler():    
     # 飞书事件回调
+    with open('request.json', 'r+') as f:
+            json_str = ujson.dumps(request.json, indent=4)# 格式化写入 JSON 文件
+            f.write(str(json_str))
     event_handler, event = event_manager.get_handler_with_event(VERIFICATION_TOKEN, ENCRYPT_KEY)
-
     return event_handler(event)
 
 @app.route('/operation/get_materials')
@@ -361,38 +332,63 @@ def ve_list():
 @app.before_first_request
 def searchContactToAddMembers():
     # 获取飞书通讯录列表并自动填入members表中
-    json_data = contact_api_client.get_scopes(user_id_type='user_id')
-    user_ids = json_data.get('data').get('user_ids')
-    json_data = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id')
-    items = json_data.get('data').get('items')
+    user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
+    items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
     user_list = list()
     for item in items:
         user_list.append({
             'name':item['name'],
             'user_id':item['user_id']
         })
-    json_data = user_list
-    management.add_member_batch(user_list)
+    #校验md5值，检测是否有变化
+    list_string = ''.join(map(str, user_list))
+    MD5remote = hashlib.md5()
+    MD5remote.update(list_string.encode('utf-8'))
+    MD5remote = MD5remote.hexdigest()
+
+    MD5local = sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
+
+    if MD5local == 'null' or MD5local is None:
+        sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
+        MD5local = '0'
+    else:
+        MD5local = MD5local[1]
+
+    if MD5local != MD5remote:
+        management.add_member_batch(user_list)
+        sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
+        sql.commit()
 
 @app.before_first_request
 def getItemsBySheets():
-    json_data = spreadsheet_api_client.fetchSheet(ITEM_SHEET_TOKEN)
-    item_sheet = json_data.get('data').get('sheets')[0]
-    json_data = spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{item_sheet.get('sheet_id')}!A2:D")
-    item_list = json_data.get('data').get('valueRange').get('values')
-    for item in item_list:
-        category_name = item[0]
-        item_name = item[1]
-        item_num_total = item[2] if item[2] else 1
-        item_num_broken = item[3] if item[3] else 0
-        management.add_items_until_limit(father_name=item_name, category_name=category_name, num=item_num_total, num_bad=item_num_broken)
+    #校验修改时间，检测是否有变化
+    latest_modify_time_remote = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')[0].get('latest_modify_time')
+    latest_modify_time_local = sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
+    if latest_modify_time_local == 'null' or latest_modify_time_local is None:
+        sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the spreadsheet.'})
+        latest_modify_time_local = '0'
+    else: 
+        latest_modify_time_local = latest_modify_time_local[1]
+    
+    if latest_modify_time_local != latest_modify_time_remote:
+        item_sheet = spreadsheet_api_client.fetchSheet(ITEM_SHEET_TOKEN).get('data').get('sheets')[0]
+        item_list = spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{item_sheet.get('sheet_id')}!A2:D").get('data').get('valueRange').get('values')
+        print('add item by sheet')
+        for item in item_list:
+            category_name = item[0]
+            item_name = item[1]
+            item_num_total = item[2] if item[2] else 1
+            item_num_broken = item[3] if item[3] else 0
+            management.add_items_until_limit(father_name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
+        sql.update('logs',('do','used to detect changes in the spreadsheet.'),{'time':latest_modify_time_remote})
+        sql.commit()
 
 if __name__ == "__main__":
     # 连接mysql服务器
-    f = open('settings.json', 'r')
-    settings = ujson.loads(f.read())
-    f.close()
-    sql = mysql.MySql(settings['mysql'])
-    management = ApiManagement(sql)
+    with open('settings.json', 'r') as f:
+        settings = ujson.loads(f.read())
+        sql = mysql.MySql(settings['mysql'])
+        ITEM_SHEET_TOKEN = settings['sheet']['token']
+        management = ApiManagement(sql)
     # 启动服务
     app.run(host="0.0.0.0", port=3000, debug=True)

@@ -1,3 +1,4 @@
+AAq7rfpwDmKrO:
 {
     "config": {
         "update_multi": true
@@ -5,10 +6,58 @@
     "i18n_elements": {
         "zh_cn": [
             {
-                "tag": "markdown",
-                "content": "**${title}**",
-                "text_align": "left",
-                "text_size": "normal"
+                "tag": "column_set",
+                "flex_mode": "none",
+                "background_style": "grey",
+                "horizontal_spacing": "8px",
+                "horizontal_align": "left",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "vertical_align": "top",
+                        "vertical_spacing": "8px",
+                        "background_style": "default",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "<font color=grey>**${title}**</font>",
+                                "text_align": "left",
+                                "text_size": "heading"
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "100px",
+                        "vertical_align": "top",
+                        "vertical_spacing": "8px",
+                        "background_style": "default",
+                        "elements": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "返回"
+                                },
+                                "type": "default",
+                                "complex_interaction": true,
+                                "width": "default",
+                                "size": "medium",
+                                "icon": {
+                                    "tag": "standard_icon",
+                                    "token": "undo_outlined"
+                                },
+                                "value": {
+                                    "name": "back",
+                                    "id": "${father_id}"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "margin": "16px 0px 0px 0px"
             },
             {
                 "tag": "column_set",
@@ -19,14 +68,6 @@
                 "columns": [
                     {
                         "tag": "column",
-                        "width": "58px",
-                        "vertical_align": "top",
-                        "vertical_spacing": "8px",
-                        "background_style": "default",
-                        "elements": []
-                    },
-                    {
-                        "tag": "column",
                         "width": "weighted",
                         "vertical_align": "top",
                         "vertical_spacing": "8px",
@@ -34,7 +75,7 @@
                         "elements": [
                             {
                                 "tag": "markdown",
-                                "content": "**${column_title_1}**",
+                                "content": "**${param1}**",
                                 "text_align": "center",
                                 "text_size": "normal"
                             }
@@ -50,7 +91,7 @@
                         "elements": [
                             {
                                 "tag": "markdown",
-                                "content": "**${column_title_2}**",
+                                "content": "**${param2}**",
                                 "text_align": "center",
                                 "text_size": "normal"
                             }
@@ -66,12 +107,12 @@
                         "elements": [
                             {
                                 "tag": "markdown",
-                                "content": "**${column_title_3}**",
+                                "content": "**${param3}**",
                                 "text_align": "center",
                                 "text_size": "normal"
                             }
                         ],
-                        "weight": 2
+                        "weight": 1
                     },
                     {
                         "tag": "column",
@@ -82,7 +123,7 @@
                         "elements": [
                             {
                                 "tag": "markdown",
-                                "content": "**${column_title_4}**",
+                                "content": "**查看**",
                                 "text_align": "center",
                                 "text_size": "normal"
                             }
@@ -103,47 +144,6 @@
                         "columns": [
                             {
                                 "tag": "column",
-                                "width": "58px",
-                                "vertical_align": "top",
-                                "vertical_spacing": "28px",
-                                "background_style": "default",
-                                "elements": [
-                                    {
-                                        "tag": "button",
-                                        "text": {
-                                            "tag": "plain_text",
-                                            "content": ""
-                                        },
-                                        "type": "default",
-                                        "complex_interaction": true,
-                                        "width": "fill",
-                                        "size": "tiny",
-                                        "icon": {
-                                            "tag": "standard_icon",
-                                            "token": "close-bold_outlined"
-                                        },
-                                        "value": {
-                                            "name": "object.delete",
-                                            "title": "${title}",
-                                            "object_param_1": "${object_list.param1}",
-                                            "object_param_2": "${object_list.param2}",
-                                            "object_param_3": "${object_list.param3}"
-                                        },
-                                        "confirm": {
-                                            "title": {
-                                                "tag": "plain_text",
-                                                "content": "请确认"
-                                            },
-                                            "text": {
-                                                "tag": "plain_text",
-                                                "content": "是否删除 ${object_list.param1}${object_list.param2}"
-                                            }
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                "tag": "column",
                                 "width": "weighted",
                                 "vertical_align": "top",
                                 "vertical_spacing": "28px",
@@ -156,7 +156,7 @@
                                         "text_size": "notation"
                                     }
                                 ],
-                                "weight": 2
+                                "weight": 4
                             },
                             {
                                 "tag": "column",
@@ -172,7 +172,7 @@
                                         "text_size": "notation"
                                     }
                                 ],
-                                "weight": 2
+                                "weight": 4
                             },
                             {
                                 "tag": "column",
@@ -216,7 +216,7 @@
                                             "object_param_1": "${object_list.param1}",
                                             "object_param_2": "${object_list.param2}",
                                             "object_param_3": "${object_list.param3}",
-                                            "title": "${title}"
+                                            "id": "${object_list.id}"
                                         }
                                     }
                                 ]
@@ -229,4 +229,157 @@
         ]
     },
     "i18n_header": {}
+}
+
+
+AAq7gOddRQSIf:
+{
+    "config": {
+        "update_multi": true
+    },
+    "i18n_elements": {
+        "zh_cn": [
+            {
+                "tag": "column_set",
+                "flex_mode": "none",
+                "background_style": "default",
+                "horizontal_spacing": "8px",
+                "horizontal_align": "left",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "vertical_align": "top",
+                        "vertical_spacing": "8px",
+                        "background_style": "default",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "**🏆状态：**\n${param2}",
+                                "text_align": "left",
+                                "text_size": "normal"
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "vertical_align": "top",
+                        "vertical_spacing": "8px",
+                        "background_style": "default",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "**🔢编号：**\n${param1}",
+                                "text_align": "left",
+                                "text_size": "normal"
+                            }
+                        ],
+                        "weight": 1
+                    }
+                ],
+                "margin": "16px 0px 0px 0px"
+            },
+            {
+                "tag": "column_set",
+                "flex_mode": "stretch",
+                "background_style": "default",
+                "horizontal_spacing": "8px",
+                "horizontal_align": "left",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "vertical_align": "top",
+                        "vertical_spacing": "8px",
+                        "background_style": "default",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "**🗳当前位置：**\n${param3}",
+                                "text_align": "left",
+                                "text_size": "normal"
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "vertical_align": "top",
+                        "vertical_spacing": "8px",
+                        "background_style": "default",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "**📝备注：**\n${param4}",
+                                "text_align": "left",
+                                "text_size": "normal"
+                            }
+                        ],
+                        "weight": 1
+                    }
+                ],
+                "margin": "16px 0px 0px 0px"
+            },
+            {
+                "tag": "action",
+                "layout": "bisected",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {
+                            "tag": "plain_text",
+                            "content": "申领"
+                        },
+                        "type": "primary",
+                        "complex_interaction": true,
+                        "width": "100px",
+                        "size": "small",
+                        "icon": {
+                            "tag": "standard_icon",
+                            "token": "arrow-up_outlined"
+                        },
+                        "value": {
+                            "name": "object.apply",
+                            "id": "${param1}"
+                        }
+                    },
+                    {
+                        "tag": "button",
+                        "text": {
+                            "tag": "plain_text",
+                            "content": "返回"
+                        },
+                        "type": "primary",
+                        "complex_interaction": true,
+                        "width": "100px",
+                        "size": "small",
+                        "icon": {
+                            "tag": "standard_icon",
+                            "token": "left_outlined"
+                        },
+                        "value": {
+                            "name": "back",
+                            "id": "${father_id}"
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "i18n_header": {
+        "zh_cn": {
+            "title": {
+                "tag": "plain_text",
+                "content": "${title}"
+            },
+            "subtitle": {
+                "tag": "plain_text",
+                "content": ""
+            },
+            "template": "green"
+        }
+    }
 }

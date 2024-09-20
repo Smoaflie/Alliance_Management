@@ -52,13 +52,13 @@ if __name__ == '__main__':
     # 定义所有需要创建的表
     print("正在创建表")
     tables = {
-        # logs 用于存储审批记录，这个表比较混乱 
+        # logs 用于存储日志，这个表比较混乱 
             # `id` 申请ID  
             # `time` 申请提交时间  
-            # `openid` 提交人openid  
+            # `userId` 提交人openid  
             # `operation` 操作类型  
             # `object` 操作对象  
-            # `name` 提交人
+            # `userName` 提交人
             # `num` 操作数目  
             # `do` 备注  
             # `verify` 审批状态(0为不需要审核,1为通过,2为退回,3为待审
@@ -67,10 +67,10 @@ if __name__ == '__main__':
         'logs': '''CREATE TABLE `logs` (
           `id` int(255) AUTO_INCREMENT PRIMARY KEY,
           `time` text NOT NULL,
-          `openid` text NOT NULL,
+          `userId` text NOT NULL,
           `operation` text NOT NULL,
           `object` int(255) DEFAULT NULL,
-          `name` text,
+          `userName` text,
           `num` int(11) DEFAULT NULL,
           `do` text,
           `verify` int(255) DEFAULT NULL,
@@ -145,12 +145,12 @@ if __name__ == '__main__':
             BEGIN
                 UPDATE item_list
                 SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
-                    free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1)
+                    free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1),
                     broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
                 WHERE id = NEW.father;
 
                 UPDATE item_category
-                SET total = (SELECT SUM(total) FROM item_list WHERE father = NEW.father)
+                SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = NEW.father))
                 WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
             END;
         ''',
@@ -161,12 +161,12 @@ if __name__ == '__main__':
             BEGIN
                 UPDATE item_list
                 SET total = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father),
-                    free = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 1)
+                    free = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 1),
                     broken = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 3)
                 WHERE id = OLD.father;
 
                 UPDATE item_category
-                SET total = (SELECT SUM(total) FROM item_list WHERE father = OLD.father)
+                SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = OLD.father))
                 WHERE id = (SELECT father FROM item_list WHERE id = OLD.father);
             END;
         ''',
@@ -177,12 +177,12 @@ if __name__ == '__main__':
             BEGIN
                 UPDATE item_list
                 SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
-                    free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1)
+                    free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1),
                     broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
                 WHERE id = NEW.father;
 
                 UPDATE item_category
-                SET total = (SELECT SUM(total) FROM item_list WHERE father = NEW.father)
+                SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = NEW.father))
                 WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
             END;
         '''
@@ -309,7 +309,7 @@ if __name__ == '__main__':
                     print(f"\t初值 {value:<{16}}\t已存在，跳过")
     '''
             
-
+    conn.commit()
     conn.close()
 
     print('数据库初始化成功')
