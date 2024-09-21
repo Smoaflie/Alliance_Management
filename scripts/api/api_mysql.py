@@ -113,7 +113,7 @@ class MySql:
         self.__cursor.execute(sql, values)
 
 
-    def remove(self, table, key, value):
+    def delete(self, table, key, value):
         self.refresh()
         sql = f"DELETE FROM {table} WHERE {key} = %s"
         self.__cursor.execute(sql,(value,))
@@ -125,7 +125,7 @@ class MySql:
         except:
             self.__db.rollback()
             self.__db.commit()
-            raise MySqlError("Error happen when remove date !")
+            raise MySqlError("Error happen when delete date !")
 
     def getchecksum(self, table):
         self.refresh()

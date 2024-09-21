@@ -53,29 +53,19 @@ if __name__ == '__main__':
     print("正在创建表")
     tables = {
         # logs 用于存储日志，这个表比较混乱 
-            # `id` 申请ID  
-            # `time` 申请提交时间  
-            # `userId` 提交人openid  
-            # `operation` 操作类型  
+            # `id` 日志ID  
+            # `time` 提交时间  
+            # `userId` 操作人id  
+            # `operation` 操作内容 
             # `object` 操作对象  
-            # `userName` 提交人
-            # `num` 操作数目  
             # `do` 备注  
-            # `verify` 审批状态(0为不需要审核,1为通过,2为退回,3为待审
-            # `wis` 位置  
-            # `approver` 审批人
         'logs': '''CREATE TABLE `logs` (
           `id` int(255) AUTO_INCREMENT PRIMARY KEY,
           `time` text NOT NULL,
           `userId` text NOT NULL,
           `operation` text NOT NULL,
           `object` int(255) DEFAULT NULL,
-          `userName` text,
-          `num` int(11) DEFAULT NULL,
           `do` text,
-          `verify` int(255) DEFAULT NULL,
-          `wis` text,
-          `approver` text
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
         # item_category 用于存储物资分类
             # `id` 分类ID  

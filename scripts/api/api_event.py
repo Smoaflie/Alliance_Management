@@ -8,7 +8,7 @@ from scripts.utils import dict_2_obj
 from flask import request, jsonify
 from scripts.decrypt import AESCipher
 
-#todo:图省事，将事件和回调写在一起，也许部分地方一些区别（find:@)
+#TODO check:图省事，将事件和回调写在一起，也许部分地方一些区别（find:@)
 class Event(object):
     callback_handler = None
 

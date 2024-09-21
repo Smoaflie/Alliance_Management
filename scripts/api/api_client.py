@@ -11,7 +11,9 @@ APP_SECRET = os.getenv("APP_SECRET")
 # const
 TENANT_ACCESS_TOKEN_URI = "/open-apis/auth/v3/tenant_access_token/internal"
 MESSAGE_URI = "/open-apis/im/v1/messages"
-
+'''
+TODO:测试下所有接口对错误类型的输入会不会产生错误
+'''
 class ApiClient(object):
     def __init__(self, app_id, app_secret, lark_host):
         self._app_id = app_id
@@ -69,38 +71,12 @@ class MessageApiClient(ApiClient):
         req_body = {
             "receive_id": receive_id,
             "msg_type": msg_type,
-            "content": content
+            "content": ujson.dumps(content)
         }
         
         resp = requests.post(url=url, headers=headers, json=req_body)
         self._check_error_response(resp)
         return resp.json()
-
-        #todo:如使用open_id等，需修改
-        #todo:分析需求，目前获取messageid只是为了修改卡片内容，但卡片交互时会发送messageid，似乎没必要自己维护消息列表
-        # user_id = receive_id
-        # self.add_sent_message_into_dict(message_request, user_id)
-        # message_request = resp.json()
-
-        # return message_request
-
-    # def add_sent_message_into_dict(self, message_request, user_id):
-    #     message = {
-    #         message_request.get('data').get('message_id'):{
-    #             'msg_type': message_request.get('data').get('msg_type'),
-    #             'chat_id': message_request.get('data').get('chat_id'),
-    #             'create_time': message_request.get('data').get('create_time'),
-    #             'update_time': message_request.get('data').get('update_time'),
-    #             'updated': message_request.get('data').get('updated')
-    #         }
-    #     }
-    #     if self.sent_message_dict.get(user_id) and \
-    #         self.sent_message_dict.get(user_id).get(message.keys[0]): 
-    #         return
-    #     else: 
-    #         self.sent_message_dict[user_id] = {
-    #             message_request
-    #         }
 
 class SpreadsheetApiClient(ApiClient):
     #电子表格api

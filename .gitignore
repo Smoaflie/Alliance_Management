@@ -2,3 +2,4 @@ venv/
 *.cnf
 *.pyc
 __pycache__
+datasheet/
