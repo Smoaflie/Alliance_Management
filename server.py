@@ -2,17 +2,18 @@
 import os
 import logging
 import requests
-from scripts.api.api_client import MessageApiClient, SpreadsheetApiClient, ContactApiClient, CloudApiClient
-from scripts.api.api_event import MessageReceiveEvent, UrlVerificationEvent, EventManager, BotMenuClickEvent, CardActionEvent
+from scripts.api.api_client import MessageApiClient, SpreadsheetApiClient, ContactApiClient, CloudApiClient, ApprovalApiClient
+from scripts.api.api_event import MessageReceiveEvent, UrlVerificationEvent, EventManager, BotMenuClickEvent, CardActionEvent, ApprovalInstanceEvent
 from flask import Flask, jsonify, request, abort
 from dotenv import load_dotenv, find_dotenv
 from scripts.api.api_management import ApiManagement
 from scripts.api import api_mysql as mysql
 from scripts.api.api_self import DEBUG_OUT
 import ujson
-import datetime
+from datetime import datetime
 import hashlib
 import re
+import time
 
 # load env parameters form file named .env
 load_dotenv(find_dotenv())
@@ -31,6 +32,7 @@ spreadsheet_api_client = SpreadsheetApiClient(APP_ID, APP_SECRET, LARK_HOST)
 message_api_client = MessageApiClient(APP_ID, APP_SECRET, LARK_HOST)
 contact_api_client = ContactApiClient(APP_ID, APP_SECRET, LARK_HOST)
 cloud_api_client = CloudApiClient(APP_ID, APP_SECRET, LARK_HOST)
+approval_api_event = ApprovalApiClient(APP_ID, APP_SECRET, LARK_HOST)
 event_manager = EventManager()
 
 
@@ -48,8 +50,9 @@ def request_url_verify_handler(req_data: UrlVerificationEvent):
 def message_receive_event_handler(req_data: MessageReceiveEvent):
     user_id = req_data.event.sender.sender_id.user_id
     message = req_data.event.message
+    sender = req_data.event.sender
 
-    process_user_message(user_id, message)    
+    process_user_message(user_id, message, sender)    
     return jsonify()
 
 @event_manager.register("application.bot.menu_v6")
@@ -65,8 +68,9 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
         }
         message_api_client.send_interactive_with_user_id(user_id, content)
     elif event_key == 'custom_menu.test':
-        # TODO:调试用，记得删
-
+        # TODO:调试用
+        
+        # DEBUG_OUT(data=result)
         pass
     return jsonify()
 
@@ -77,15 +81,38 @@ def card_action_event_handler(req_data: CardActionEvent):
     value = event.action.value
     toast=None
     data=None
-
     if value.name == 'object.inspect':
         data = create_messageInteractive(object_id=value.id)
     elif value.name == 'back':
         data = create_messageInteractive(father_id=value.id)
     elif value.name == 'object.apply':
         oid = value.id
-        management.apply_item(user_id=user_id, oid=int(oid))
+        if management.apply_item(user_id=user_id, oid=int(oid)) == 'success':
+            item_info = management.get_item(oid)
+            
+            form=[
+                {'id':'do','type':'textarea','value':'申请'},
+                {'id':'data','type':'date',"value": f"{datetime.fromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S+08:00")}"},
+                {'id':'form','type':'fieldList', 'value':[[ 
+                    {'id':'name','type':'input','value':f'{item_info['name']}'},
+                    {'id':'num','type':'number','value':'1'},
+                    {'id':'oid','type':'number','value':oid}
+                ]]},
+            ]
 
+            approval_api_event.create(approval_code=APPROVAL_CODE, user_id='f1549d18',\
+                                    form=ujson.dumps(form))
+            toast = {
+                'type':'success',
+                'content':'success: 已发送申请'
+            }
+        else:
+            toast = {
+                'type':'error',
+                'content':'Error: 物品不可用'
+            }
+        data = create_messageInteractive(object_id=oid)
+        
     request_data = {
         'toast':toast if toast else {},
         "card":{
@@ -93,8 +120,37 @@ def card_action_event_handler(req_data: CardActionEvent):
             "data": data
         }
     } if data else {}
-
     return jsonify(request_data)
+
+@event_manager.register("approval_instance")
+def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
+    instance = approval_api_event.fetch_instance(req_data.event.instance_code)
+    status = req_data.event.status
+    applicant_user_id = instance.get('data').get('timeline')[0].get('user_id')
+    operator_user_id = instance.get('data').get('timeline')[-1].get('user_id')
+    if instance.get('data').get('approval_name') == "物品领用":
+        if status in ('APPROVED', 'REJECTED','CANCELED','DELETED'): 
+            form = ujson.loads(instance.get('data').get('form'))
+            DEBUG_OUT(data=form)
+            params = {}
+            #从便于移植的角度看，这里应该使用遍历，但控件中有个fieldList……
+            params['do'] = form[0].get('value')
+            params['time'] = form[1].get('value')
+            params['name'] = form[2].get('value')[0][0].get('value')
+            params['num'] = form[2].get('value')[0][1].get('value')
+            params['oid'] = form[2].get('value')[0][2].get('value')
+            applicant_name = management.get_member(applicant_user_id).get('name')
+            DEBUG_OUT(data=form)
+            if status in ('REJECTED','CANCELED','DELETED'): 
+                management.set_item_state(oid=params['oid'],operater_user_id=operator_user_id,operation='MODIFY',\
+                                        useable=1,wis=applicant_name,do=params['do'])
+            elif status == 'APPROVED':
+                management.set_item_state(oid=params['oid'],operater_user_id=operator_user_id,operation='MODIFY',\
+                                        useable=0,wis=applicant_name,do=params['do'])
+    result = 'success'
+    DEBUG_OUT(data=result)
+
+    return jsonify()
 
 '''
 Flask app function
@@ -128,7 +184,7 @@ def get_materials():
 @app.route('/operation/submit', methods=['POST'])
 def o_submit():
     info = {
-            'time': "%s" % (datetime.datetime.now()),
+            'time': "%s" % (datetime.now()),
             'openid': request.form.get('openid'),
             'operation': request.form.get('op'),
             'object': request.form.get('oid'),
@@ -252,38 +308,39 @@ def ve_list():
     return ujson.dumps(info)
 
 @app.before_first_request
-def searchContactToAddMembers():
-    # 获取飞书通讯录列表并自动填入members表中
-    user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
-    items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
-    user_list = list()
-    for item in items:
-        user_list.append({
-            'name':item['name'],
-            'user_id':item['user_id']
-        })
-    #校验md5值，检测是否有变化
-    list_string = ''.join(map(str, user_list))
-    MD5remote = hashlib.md5()
-    MD5remote.update(list_string.encode('utf-8'))
-    MD5remote = MD5remote.hexdigest()
+def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入members表中
+    pass
+    #TODO：经常报错
+    # user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
+    # items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
+    # user_list = list()
+    # for item in items:
+    #     user_list.append({
+    #         'name':item['name'],
+    #         'user_id':item['user_id']
+    #     })
+    # #校验md5值，检测是否有变化
+    # list_string = ''.join(map(str, user_list))
+    # MD5remote = hashlib.md5()
+    # MD5remote.update(list_string.encode('utf-8'))
+    # MD5remote = MD5remote.hexdigest()
 
-    MD5local = sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
+    # MD5local = sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
 
-    if MD5local == 'null' or MD5local is None:
-        sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
-        MD5local = '0'
-    else:
-        MD5local = MD5local[1]
+    # if MD5local == 'null' or MD5local is None:
+    #     sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
+    #     MD5local = '0'
+    # else:
+    #     MD5local = MD5local[1]
 
-    if MD5local != MD5remote:
-        management.add_member_batch(user_list)
-        sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
-        sql.commit()
-        print("add members from contact.")
+    # if MD5local != MD5remote:
+    #     management.add_member_batch(user_list)
+    #     sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
+    #     sql.commit()
+    #     print("add members from contact.")
 
 @app.before_first_request
-def getItemsBySheets():
+def getItemsBySheets(): #从电子表格中获取物品信息
     #校验修改时间，检测是否有变化
     latest_modify_time_remote = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')[0].get('latest_modify_time')
     latest_modify_time_local = sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
@@ -305,6 +362,12 @@ def getItemsBySheets():
             management.add_items_until_limit(father_name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
         sql.update('logs',('do','used to detect changes in the spreadsheet.'),{'time':latest_modify_time_remote})
         sql.commit()
+
+@app.before_first_request
+def subApprovalEvent(): #订阅审批事件
+    #TODO:只能订阅一次
+    pass
+    # approval_api_event.subscribe(APPROVAL_CODE)
 
 @app.errorhandler
 def msg_error_handler(ex):
@@ -380,7 +443,7 @@ def create_messageInteractive(object_id=None, father_id=None):
     }
     return data
         
-def process_user_message(user_id, message):
+def process_user_message(user_id, message, sender):
     reply_text = ""
     reply_map = {
         'invald_type':'Error: 赞不支持此类消息',
@@ -398,7 +461,8 @@ def process_user_message(user_id, message):
         'help': command_get_help,
         'op': command_add_op,
         'deop': command_delete_op,
-        'lsop': command_list_op
+        'lsop': command_list_op,
+        'search': search_id,
     }
     #目前只能识别文字信息
     if message.message_type != 'text':
@@ -437,17 +501,16 @@ def process_user_message(user_id, message):
                         params = {key: value.strip("'") for key, value in pairs}
                     #进行相应操作
 
-                    reply_text = command_map[command](reply_map, message, object, params)
+                    reply_text = command_map[command](reply_map, message, sender, object, params)
 
     if reply_text not in ('', None) :
         content = {
             'text':reply_text
         }
-        print(content)
         message_api_client.send_text_with_user_id(user_id,content)
     return jsonify()
 
-def command_add_object(reply_map, message, object, params):
+def command_add_object(reply_map, message, sender, object, params):
     necessary_param_map = {
         'item':['name','father','list_id'],
         'list':['category','father','category_id'],
@@ -474,7 +537,7 @@ def command_add_object(reply_map, message, object, params):
             
             return reply_map['success']
             
-def command_delete_object(reply_map, message, object, params):
+def command_delete_object(reply_map, message, sender, object, params):
     necessary_param_map = {
         'item':['id'],
         'list':['id','name'],
@@ -500,7 +563,7 @@ def command_delete_object(reply_map, message, object, params):
             
             return reply_map['success']
 
-def command_add_op(reply_map, message, object, params):
+def command_add_op(reply_map, message, sender, object, params):
     user_id = None
     for mention in message.mentions:
         if mention.key == object:
@@ -514,7 +577,7 @@ def command_add_op(reply_map, message, object, params):
     management.set_member_root(user_id)
     return reply_map['success']
 
-def command_delete_op(reply_map, message, object, params):
+def command_delete_op(reply_map, message, sender, object, params):
     user_id = None
     for mention in message.mentions:
         if mention.key == object:
@@ -528,11 +591,23 @@ def command_delete_op(reply_map, message, object, params):
     management.set_member_unroot(user_id)
     return reply_map['success']
 
-def command_list_op(reply_map, message, object, params):
+def command_list_op(reply_map, message, sender, object, params):
     result = management.get_members_root()
     return ujson.dumps(result, ensure_ascii=False)
 
-def command_get_help(reply_map, message, object, params):
+def search_id(reply_map, message, sender, object, params):
+    if not object:
+        return reply_map['invalid_object'] % f"/search {{id}}不存在"
+    
+    user_id = sender.sender_id.user_id
+    content = {
+            'type':'template',
+            'data':create_messageInteractive(object_id=object)
+        }
+    message_api_client.send_interactive_with_user_id(user_id, content)
+    return 
+
+def command_get_help(reply_map, message, sender, object, params):
     margin = 10
     return f'''\
     机器人命令指南：
@@ -550,6 +625,7 @@ def command_get_help(reply_map, message, object, params):
     {'op {{@user_name}}':<{margin}} \t给予管理员权限
     {'deop {{@user_name}}':<{margin}} \t取消管理员权限
     {'lsop {{@user_name}}':<{margin}} \t列出管理员列表
+    {'search {{id}}':<{margin}} \t搜索id对应的项
     '''
 
 if __name__ == "__main__":
@@ -559,5 +635,6 @@ if __name__ == "__main__":
         sql = mysql.MySql(settings['mysql'])
         ITEM_SHEET_TOKEN = settings['sheet']['token']
         management = ApiManagement(sql)
+        APPROVAL_CODE = settings['approval']['approval_code'] 
     # 启动服务
     app.run(host="0.0.0.0", port=3000, debug=True)

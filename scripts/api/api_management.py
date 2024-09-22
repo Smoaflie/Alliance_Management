@@ -281,23 +281,37 @@ class ApiManagement(object):
             self.sql.delete('item_category','id',id)
         self.sql.commit()
 
-    def apply_item(self, user_id, oid, user_name=None, do=None):
-        user_name = user_name if user_name else (self.get_member(user_id).get('name') if self.get_member(user_id) is not None else "")
+    def apply_item(self, user_id, oid, do=None):
         item_info = self.get_item(oid)
+        if item_info['useable'] != '可用':
+            return 'error'
+        
         do = item_info['do'] + do if do else item_info['do']
 
         self.sql.insert('logs', {'time':int(time.time()),
                                  'userId':user_id,
                                  'operation':'APPLY',
                                  'object':oid,
-                                 'userName':user_name,
                                  })
         self.sql.update('item_info', ('id',oid), 
                         {'useable':4,
-                        'wis':user_name,
                         'do':do})
         self.sql.commit()
-
+        return 'success'
+    
+    def set_item_state(self, operater_user_id=None, operation=None,\
+                        oid=None, useable=None, wis=None, do=None):
+        self.sql.insert('logs', {'time':int(time.time()),
+                                 'userId':operater_user_id,
+                                 'operation':operation,
+                                 'object':oid,
+                                 })
+        self.sql.update('item_info', ('id',oid), 
+                        {'useable':useable,
+                        'wis':wis,
+                        'do':do})
+        self.sql.commit()
+        
     def get_md5(self):
         table_list = self.sql.gettable()
         table_checksum_list = []

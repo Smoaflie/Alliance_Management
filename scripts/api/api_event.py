@@ -17,12 +17,14 @@ class Event(object):
         # event check and init
         header = dict_data.get("header")
         event = dict_data.get("event")
-        if header is None or event is None:
-            raise InvalidEventException("request is not callback event(v2)")
-        self.header = dict_2_obj(header)
+        if header is not None: # event v2
+            self.version = 2
+            self.header = dict_2_obj(header)
+        else:
+            self.version = 1
         self.event = dict_2_obj(event)
         #当未配置Encrypt Key 加密策略时，回调请求头不含X-Lark-Request-Timestamp等内容,将引发错误
-        if request.headers.get("X-Lark-Request-Timestamp"):
+        if request.headers.get("X-Lark-Request-Timestamp") and self.version==2:
             self._validate(token, encrypt_key)
 
     def _validate(self, token, encrypt_key):
@@ -52,14 +54,15 @@ class CardActionEvent(Event):
     def event_type():
         return "card.action.trigger"
 
-
 class MessageReceiveEvent(Event):
-    # message receive event defined in https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive
-
     @staticmethod
     def event_type():
         return "im.message.receive_v1"
 
+class ApprovalInstanceEvent(Event):
+    @staticmethod
+    def event_type():
+        return "approval_instance"
 
 class UrlVerificationEvent(Event):
 
@@ -75,7 +78,7 @@ class UrlVerificationEvent(Event):
 class EventManager(object):
     event_callback_map = dict()
     event_type_map = dict()
-    _event_list = [MessageReceiveEvent, UrlVerificationEvent, BotMenuClickEvent, CardActionEvent]
+    _event_list = [MessageReceiveEvent, UrlVerificationEvent, BotMenuClickEvent, CardActionEvent, ApprovalInstanceEvent]
 
     def __init__(self):
         for event in EventManager._event_list:
@@ -103,13 +106,13 @@ class EventManager(object):
             event = UrlVerificationEvent(dict_data)
             return EventManager.event_callback_map.get(event.event_type()), event
 
-        # only handle event v2
-        schema = dict_data.get("schema")
-        if schema is None:
-            raise InvalidEventException("request is not callback event(v2)")
-
         # get event_type
-        event_type = dict_data.get("header").get("event_type")
+        schema = dict_data.get("schema")
+        if schema is None: # event v1
+            #审批事件目前只有v1版本，需对V1版本的事件进行处理
+            event_type = dict_data.get('event').get('type')
+        else:   # event v2
+            event_type = dict_data.get("header").get("event_type")
         # build event
         event = EventManager.event_type_map.get(event_type)(dict_data, token, encrypt_key)
         # get handler

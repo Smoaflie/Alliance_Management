@@ -1,9 +1,9 @@
 {
     "schema": "2.0",
     "header": {
-        "event_id": "42c19d8d7ae98f3f45d2af89213d141c",
+        "event_id": "588a2b1d61e8c71b3e4ce75192e12fcf",
         "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-        "create_time": "1727015209010",
+        "create_time": "1727033645525",
         "event_type": "im.message.receive_v1",
         "tenant_key": "15874fbe83c4d75f",
         "app_id": "cli_a6687b8d5973100b"
@@ -12,23 +12,11 @@
         "message": {
             "chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad",
             "chat_type": "p2p",
-            "content": "{\"text\":\"\/op @_user_1\"}",
-            "create_time": "1727015208642",
-            "mentions": [
-                {
-                    "id": {
-                        "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
-                        "union_id": "on_39c045cdfce9993e11416da69de0d585",
-                        "user_id": "f1549d18"
-                    },
-                    "key": "@_user_1",
-                    "name": "\u6768\u6668\u7fd4",
-                    "tenant_key": "15874fbe83c4d75f"
-                }
-            ],
-            "message_id": "om_cb030fca24c4f9c780ab4874940a7cdb",
+            "content": "{\"text\":\"\/search 1001001\"}",
+            "create_time": "1727033645275",
+            "message_id": "om_31bfc4cce2b38f949d9601ce5070e243",
             "message_type": "text",
-            "update_time": "1727015208642"
+            "update_time": "1727033645275"
         },
         "sender": {
             "sender_id": {

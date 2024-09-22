@@ -202,6 +202,48 @@ class CloudApiClient(ApiClient):
         resp = requests.post(url=url, headers=headers, json=req_body, params=params)
         self._check_error_response(resp)
         return resp.json()
+
+class ApprovalApiClient(ApiClient):
+    def create(self, approval_code, form, user_id=None):
+        self._authorize_tenant_access_token()
+        url = "{}/open-apis/approval/v4/instances".format(self._lark_host)
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + self.tenant_access_token,
+        }
+        
+        req_body = {
+            'approval_code':approval_code,
+            'user_id':user_id,
+            'form':form
+        }
+    
+        resp = requests.post(url=url, headers=headers, json=req_body)
+        self._check_error_response(resp)
+        return resp.json()
+
+    def subscribe(self, approval_code):
+        self._authorize_tenant_access_token()
+        url = "{}/open-apis/approval/v4/approvals/{}/subscribe".format(self._lark_host,approval_code)
+        headers = {
+            "Authorization": "Bearer " + self.tenant_access_token,
+        }
+
+        resp = requests.post(url=url, headers=headers)
+        self._check_error_response(resp)
+        return resp.json()
+
+    def fetch_instance(self, instance_id):
+        self._authorize_tenant_access_token()
+        url = "{}/open-apis/approval/v4/instances/{}".format(self._lark_host,instance_id)
+        headers = {
+            "Authorization": "Bearer " + self.tenant_access_token,
+        }
+
+        resp = requests.get(url=url, headers=headers)
+        self._check_error_response(resp)
+        return resp.json()
+
     
 class LarkException(Exception):
     def __init__(self, code=0, msg=None):
