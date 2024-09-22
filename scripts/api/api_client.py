@@ -73,7 +73,7 @@ class MessageApiClient(ApiClient):
             "msg_type": msg_type,
             "content": ujson.dumps(content)
         }
-        
+
         resp = requests.post(url=url, headers=headers, json=req_body)
         self._check_error_response(resp)
         return resp.json()
@@ -202,7 +202,7 @@ class CloudApiClient(ApiClient):
         resp = requests.post(url=url, headers=headers, json=req_body, params=params)
         self._check_error_response(resp)
         return resp.json()
-
+    
 class LarkException(Exception):
     def __init__(self, code=0, msg=None):
         self.code = code

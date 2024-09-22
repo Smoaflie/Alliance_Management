@@ -66,14 +66,8 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
         message_api_client.send_interactive_with_user_id(user_id, content)
     elif event_key == 'custom_menu.test':
         # TODO:调试用，记得删
-        content = {
-            'type':'template',
-            'data':create_messageInteractive(object_id='1001001')
-        }
-        content['data']['template_variable']['param1'] = str(content['data']['template_variable']['param1'])
-        message_api_client.send_interactive_with_user_id(user_id, content)
-        
-        # return jsonify()
+
+        pass
     return jsonify()
 
 @event_manager.register("card.action.trigger")
@@ -108,8 +102,9 @@ Flask app function
 @app.route("/", methods=["POST"])
 def callback_event_handler():    
     # 飞书事件回调
-    # DEBUG_OUT(data=request.json)
+    DEBUG_OUT(data=request.json)
     event_handler, event = event_manager.get_handler_with_event(VERIFICATION_TOKEN, ENCRYPT_KEY)
+    
     return event_handler(event)
 
 @app.route('/operation/get_materials')
@@ -258,35 +253,34 @@ def ve_list():
 
 @app.before_first_request
 def searchContactToAddMembers():
-    pass
-    #TODO注释
-    # # 获取飞书通讯录列表并自动填入members表中
-    # user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
-    # items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
-    # user_list = list()
-    # for item in items:
-    #     user_list.append({
-    #         'name':item['name'],
-    #         'user_id':item['user_id']
-    #     })
-    # #校验md5值，检测是否有变化
-    # list_string = ''.join(map(str, user_list))
-    # MD5remote = hashlib.md5()
-    # MD5remote.update(list_string.encode('utf-8'))
-    # MD5remote = MD5remote.hexdigest()
+    # 获取飞书通讯录列表并自动填入members表中
+    user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
+    items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
+    user_list = list()
+    for item in items:
+        user_list.append({
+            'name':item['name'],
+            'user_id':item['user_id']
+        })
+    #校验md5值，检测是否有变化
+    list_string = ''.join(map(str, user_list))
+    MD5remote = hashlib.md5()
+    MD5remote.update(list_string.encode('utf-8'))
+    MD5remote = MD5remote.hexdigest()
 
-    # MD5local = sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
+    MD5local = sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
 
-    # if MD5local == 'null' or MD5local is None:
-    #     sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
-    #     MD5local = '0'
-    # else:
-    #     MD5local = MD5local[1]
+    if MD5local == 'null' or MD5local is None:
+        sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
+        MD5local = '0'
+    else:
+        MD5local = MD5local[1]
 
-    # if MD5local != MD5remote:
-    #     management.add_member_batch(user_list)
-    #     sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
-    #     sql.commit()
+    if MD5local != MD5remote:
+        management.add_member_batch(user_list)
+        sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
+        sql.commit()
+        print("add members from contact.")
 
 @app.before_first_request
 def getItemsBySheets():
@@ -401,7 +395,10 @@ def process_user_message(user_id, message):
     command_map = {
         'add': command_add_object,
         'del': command_delete_object,
-        'help': command_get_help
+        'help': command_get_help,
+        'op': command_add_op,
+        'deop': command_delete_op,
+        'lsop': command_list_op
     }
     #目前只能识别文字信息
     if message.message_type != 'text':
@@ -412,7 +409,7 @@ def process_user_message(user_id, message):
             #输入的不是指令，不进行操作
             pass
         else:
-            # 匹配命令格式 /operatiom param1=xxx param2=xxx ...
+            # 匹配命令格式 /operatiom [object] param1=xxx param2=xxx ...
             pattern = r'/(\w+)'
             match = re.match(pattern, text)
             if not match:
@@ -422,126 +419,120 @@ def process_user_message(user_id, message):
                 if command not in command_map:
                     reply_text = reply_map['unknown_command'] % command
                 else:
-                    reply_text = command_map[command](reply_map, text)
+                    params = None
+                    #获取操作[对象]
+                    pattern = r'/(\w+)\s+(\S+)'
+                    match = re.match(pattern, text)
+                    #TODO:是否应该用其他名字表示object？
+                    object = match.group(2) if match else None
+                    #获取操作[参数]
+                    pattern = r'((?:\w+=\S+\s*)+)'
+                    match = re.search(pattern, text)
+                    if not match:
+                        params = None
+                    else:
+                        key_value_pairs = match.group(1)
+                        kv_pattern = r'(\w+)=([^ ]+)'
+                        pairs = re.findall(kv_pattern, key_value_pairs)
+                        params = {key: value.strip("'") for key, value in pairs}
+                    #进行相应操作
 
-    if reply_text != "":
+                    reply_text = command_map[command](reply_map, message, object, params)
+
+    if reply_text not in ('', None) :
         content = {
             'text':reply_text
         }
+        print(content)
         message_api_client.send_text_with_user_id(user_id,content)
     return jsonify()
 
-def command_add_object(reply_map, text):
+def command_add_object(reply_map, message, object, params):
     necessary_param_map = {
         'item':['name','father','list_id'],
         'list':['category','father','category_id'],
         'category':['name']
     }
-    # 提取object_type [item|list|category]
-    pattern = r'/(\w+)\s+(\w+)'
-    match = re.match(pattern, text)
-    object_type = match.group(2) if match else None
-    if object_type not in ('item','list','category'):
+    # 提取object [item|list|category]
+
+    if object not in ('item','list','category'):
         return reply_map['invalid_object'] % f"/add {{object}}应为{{item|list|category}}"
     else:
-        # 将结果转换为字典
-        pattern = r'((?:\w+=\S+\s*)+)'
-        match = re.search(pattern, text)
-        print(match)
-        if not match:
-            required_params = necessary_param_map.get(object_type, [])
+        required_params = necessary_param_map.get(object, [])
+        if not params or not any(params[param] for param in required_params):
             required_params_str = "'{}'".format("' | '".join(required_params))
             return reply_map['invalid_param'] % (f"{{{required_params_str}}}是必需的")
-        key_value_pairs = match.group(1)
-         #提取键值对
-        kv_pattern = r'(\w+)=([^ ]+)'
-        pairs = re.findall(kv_pattern, key_value_pairs)
-        data = {key: value.strip("'") for key, value in pairs}
-        
-        params = {
-            'name':data.get('name'),
-            'father':data.get('father') if data.get('father') else \
-                data.get('list_id') if object_type=='list' else \
-                (data.get('list_id') if object_type=='category' else None),
-            'category_name':data.get('category'),
-            'category_id':data.get("category_id"),
-            'num':data.get('num')
-        }
-        _name = data.get('name')
-        _father = data.get('father') if data.get('father') else \
-                data.get('list_id') if object_type=='list' else \
-                (data.get('list_id') if object_type=='category' else None)
-        _category_name = data.get('category')
-        _category_id = data.get("category_id")
-        _num = data.get('num')
 
-        for type,params in necessary_param_map:
-            if object_type == type:
-                required_params = necessary_param_map.get(object_type, [])
-                if not any(params[param] for param in required_params):
-                    required_params_str = "'{}'".format("' | '".join(required_params))
-                    return reply_map['invalid_param'] % (f"{{{required_params_str}}}是必需的")
         else:
             #TODO:操作执行失败的检测与处理
-            if object_type == 'item':
-                management.add_item(father=_father,father_name=_name,
-                                category_name=_category_name,num=_num,category_id=_category_id)
-            elif object_type == 'list':
-                management.add_list(father=_father,father_name=_category_name,name=_name)
-            elif object_type == 'category':
-                management.add_category(name=_name)
+            if object == 'item':
+                management.add_item(params=params)
+            elif object == 'list':
+                management.add_list(params=params)
+            elif object == 'category':
+                management.add_category(params=params)
             
             return reply_map['success']
             
-def command_delete_object(reply_map, text):
+def command_delete_object(reply_map, message, object, params):
     necessary_param_map = {
         'item':['id'],
         'list':['id','name'],
         'category':['id','name']
     }
     # 提取键值对
-    pattern = r'/(\w+)\s+(\w+)'
-    match = re.match(pattern, text)
-    object_type = match.group(2) if match else None
-    if object_type not in ('item','list','category'):
+    if object not in ('item','list','category'):
         return reply_map['invalid_object'] % f"/del {{object}}应为{{item|list|category}}"
     else:
-        # 将结果转换为字典
-        pattern = r'((?:\w+=\S+\s*)+)'
-        match = re.search(pattern, text)
-        if not match:
-            required_params = necessary_param_map.get(object_type, [])
+        if not params or not any(params[param] for param in required_params):
+            required_params = necessary_param_map.get(object, [])
             required_params_str = "'{}'".format("' | '".join(required_params))
             return reply_map['invalid_param'] % (f"{{{required_params_str}}}是必需的")
-        key_value_pairs = match.group(1)
-         #提取键值对
-        kv_pattern = r'(\w+)=([^ ]+)'
-        pairs = re.findall(kv_pattern, key_value_pairs)
-        data = {key: value.strip("'") for key, value in pairs}
-        
-        params = {
-            'name':data.get('name'),
-            'id':data.get('id')
-        }
 
-        for type,params in necessary_param_map:
-            if object_type == type:
-                required_params = necessary_param_map.get(object_type, [])
-                if not any(params[param] for param in required_params):
-                    required_params_str = "'{}'".format("' | '".join(required_params))
-                    return reply_map['invalid_param'] % (f"{{{required_params_str}}}是必需的")
         else:
             #TODO:操作执行失败的检测与处理
-            if object_type == 'item':
+            if object == 'item':
                 management.del_item(params=params)
-            elif object_type == 'list':
+            elif object == 'list':
                 management.del_list(params=params)
-            elif object_type == 'category':
+            elif object == 'category':
                 management.del_category(params=params)
             
             return reply_map['success']
 
-def command_get_help(reply_map, text):
+def command_add_op(reply_map, message, object, params):
+    user_id = None
+    for mention in message.mentions:
+        if mention.key == object:
+            user_id = mention.id.user_id
+            break
+    
+    if not user_id:
+        return reply_map['invalid_object'] % f'无法识别的用户{object}'
+    
+    #TODO：id不在表中如何解决？
+    management.set_member_root(user_id)
+    return reply_map['success']
+
+def command_delete_op(reply_map, message, object, params):
+    user_id = None
+    for mention in message.mentions:
+        if mention.key == object:
+            user_id = mention.id.user_id
+            break
+    
+    if not user_id:
+        return reply_map['invalid_object'] % f'无法识别的用户{object}'
+    
+    #TODO：id不在表中如何解决？
+    management.set_member_unroot(user_id)
+    return reply_map['success']
+
+def command_list_op(reply_map, message, object, params):
+    result = management.get_members_root()
+    return ujson.dumps(result, ensure_ascii=False)
+
+def command_get_help(reply_map, message, object, params):
     margin = 10
     return f'''\
     机器人命令指南：
@@ -556,7 +547,11 @@ def command_get_help(reply_map, text):
         {'':<{margin}} item\t 具体物品。params:'id',
         {'':<{margin}} list\t 物品列表。params:{{'name'|'id'}},
         {'':<{margin}} category\t 物品类型。params:{{'name'|'id'}}
+    {'op {{@user_name}}':<{margin}} \t给予管理员权限
+    {'deop {{@user_name}}':<{margin}} \t取消管理员权限
+    {'lsop {{@user_name}}':<{margin}} \t列出管理员列表
     '''
+
 if __name__ == "__main__":
     # 连接mysql服务器
     with open('settings.json', 'r') as f:

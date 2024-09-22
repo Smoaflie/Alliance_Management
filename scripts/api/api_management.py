@@ -113,17 +113,41 @@ class ApiManagement(object):
             }
         else:
             return None
+    
+    def get_members_root(self):
+        members = self.sql.fetchall('members', 'root', 1)
+        result = []
+        if members:
+            for member in members:
+                result.append({
+                    'user_id': member[0],
+                    'name': member[1],
+                    'root': member[2]
+                })
+        return result
         
+    def set_member_root(self, user_id):
+        self.sql.update('members', ('user_id',user_id), {'root':1})
+        self.sql.commit()
+
+    def set_member_unroot(self, user_id):
+        self.sql.update('members', ('user_id',user_id), {'root':0})
+        self.sql.commit()
+
+    
+
     #TODO:统一变量名，便于使用params进行配置
-    def add_item(self, father=None, num=1, father_name=None, num_broken=None,\
+    def add_item(self, father=None, num=1, \
+                 father_name=None, num_broken=None,\
                   category_name=None, category_id=None, params=None):
         if params:
-            father = params.get['father']
-            num = params.get['num']
-            father_name = params.get['father_name']
-            num_broken = params.get['num_broken']
-            category_name = params.get['category_name']
-            category_id = params.get['category_id']
+            father = params.get('father')
+            num = params.get('num')
+            father_name = params.get('father_name') if params.get('father_name') else params.get('name')
+            num_broken = params.get('num_broken')
+            category_name = params.get('category_name')
+            category_id = params.get('category_id')
+
         # 查找父记录
         #TODO：无法添加同名物品到不同分类            
         if father:
@@ -136,7 +160,6 @@ class ApiManagement(object):
         if not father_recoder:
             if (category_name or category_id) and father_name:
                 father = self.add_list(father_name=category_name, father=category_id, name=father_name)
-                print(category_name)
             else:
                 raise Exception(f"父记录list Id:{father if father else father_name} 未找到，且缺少参数无法新建，跳过插入")
         else:
@@ -144,7 +167,7 @@ class ApiManagement(object):
 
         self_recoder = self.sql.fetchall('item_info', 'father', father)
         new_id = (1000*father) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
-        for i in range(num if num else 1):
+        for i in range(int(num) if num else 1):
             # 设置Id，进行添加
             self.sql.insert('item_info', {
                 'id':new_id+i,
@@ -170,9 +193,9 @@ class ApiManagement(object):
 
     def add_list(self, father=None, father_name=None, name=None, params=None):
         if params:
-            father = params.get['father']
-            father_name = params.get['father_name']
-            name = params.get['name']
+            father = params.get('father')
+            father_name = params.get('father_name')
+            name = params.get('name')
         # 查找父记录
         if father:
             father_recoder = self.sql.fetchone('item_category', 'id', father)
@@ -207,7 +230,7 @@ class ApiManagement(object):
 
     def add_category(self, name, params=None):
         if params:
-            name = params.get['name']
+            name = params.get('name')
 
         # 查找是否已存在
         self_recoder = self.sql.fetchone('item_category', 'name', name)
@@ -227,15 +250,15 @@ class ApiManagement(object):
     #TODO:删除父节点时同时删除所有子节点
     def del_item(self, id, params=None):
         if params:
-            id = params.get['id']
+            id = params.get('id')
 
         self.sql.delete('item_info','id',id)
         self.sql.commit()
 
     def del_list(self,name=None,id=None,params=None):
         if params:
-            id = params.get['id']
-            name = params.get['name']
+            id = params.get('id')
+            name = params.get('name')
 
         if not (name or id):
             raise Exception("缺少必要的参数")
@@ -247,8 +270,8 @@ class ApiManagement(object):
 
     def del_category(self,name=None,id=None, params=None):
         if params:
-            id = params.get['id']
-            name = params.get['name']
+            id = params.get('id')
+            name = params.get('name')
 
         if not (name or id):
             raise Exception("缺少必要的参数")
@@ -262,13 +285,7 @@ class ApiManagement(object):
         user_name = user_name if user_name else (self.get_member(user_id).get('name') if self.get_member(user_id) is not None else "")
         item_info = self.get_item(oid)
         do = item_info['do'] + do if do else item_info['do']
-        print({
-            'time':int(time.time()),
-            'userId':user_id,
-            'operation':'APPLY',
-            'object':oid,
-            'userName':user_name,
-        })
+
         self.sql.insert('logs', {'time':int(time.time()),
                                  'userId':user_id,
                                  'operation':'APPLY',
