@@ -49,6 +49,10 @@ if __name__ == '__main__':
     cursor = conn.cursor()
     print("已定位数据库 %s" % settings['mysql']['db'])
 
+    # 修改事务隔离级别
+    sql = 'SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;'
+    cursor.execute(sql)
+    print("已修改事物隔离级别为 READ COMMITTED")
     # 定义所有需要创建的表
     print("正在创建表")
     tables = {
@@ -65,7 +69,7 @@ if __name__ == '__main__':
           `userId` text NOT NULL,
           `operation` text NOT NULL,
           `object` int(255) DEFAULT NULL,
-          `do` text,
+          `do` text
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
         # item_category 用于存储物资分类
             # `id` 分类ID  
@@ -110,11 +114,15 @@ if __name__ == '__main__':
             # `user_id` 飞书user_id  
             # `name` 实名
             # `root` 管理 1是0否   
+            # `card_message_id` 用户会话中消息卡片的message_id
+            # `card_message_create_time` 用户会话中消息卡片的创建时间
         'members': '''CREATE TABLE `members` (
           `user_id` text NOT NULL,
           `name` text NOT NULL,
-          `root` int(1) NOT NULL DEFAULT 0
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'''
+          `root` int(1) NOT NULL DEFAULT 0,
+          `card_message_id` text,
+          `card_message_create_time` text
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
     }
     # 逐个检查并创建表
     for table_name, create_sql in tables.items():

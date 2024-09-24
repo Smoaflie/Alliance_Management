@@ -1,9 +1,9 @@
 {
     "schema": "2.0",
     "header": {
-        "event_id": "588a2b1d61e8c71b3e4ce75192e12fcf",
+        "event_id": "8e16c1003a200932c8460e9345bb5dc9",
         "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-        "create_time": "1727033645525",
+        "create_time": "1727208014529",
         "event_type": "im.message.receive_v1",
         "tenant_key": "15874fbe83c4d75f",
         "app_id": "cli_a6687b8d5973100b"
@@ -12,11 +12,11 @@
         "message": {
             "chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad",
             "chat_type": "p2p",
-            "content": "{\"text\":\"\/search 1001001\"}",
-            "create_time": "1727033645275",
-            "message_id": "om_31bfc4cce2b38f949d9601ce5070e243",
+            "content": "{\"text\":\"\/return 1002001\"}",
+            "create_time": "1727208014246",
+            "message_id": "om_aa615e71621ddfa9864bda2cc8044528",
             "message_type": "text",
-            "update_time": "1727033645275"
+            "update_time": "1727208014246"
         },
         "sender": {
             "sender_id": {

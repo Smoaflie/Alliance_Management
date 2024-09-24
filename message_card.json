@@ -1,0 +1,385 @@
+{
+    "display":
+    {
+        "config": {
+            "update_multi": true
+        },
+        "i18n_elements": {
+            "zh_cn": [
+                {
+                    "tag": "column_set",
+                    "flex_mode": "none",
+                    "background_style": "grey",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "<font color=grey>**${title}**</font>",
+                                    "text_align": "left",
+                                    "text_size": "heading"
+                                }
+                            ],
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "100px",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "返回"
+                                    },
+                                    "type": "default",
+                                    "complex_interaction": true,
+                                    "width": "default",
+                                    "size": "medium",
+                                    "icon": {
+                                        "tag": "standard_icon",
+                                        "token": "undo_outlined"
+                                    },
+                                    "value": {
+                                        "name": "back",
+                                        "id": "${father_id}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "margin": "16px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "none",
+                    "background_style": "grey",
+                    "horizontal_spacing": "0px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**${param1}**",
+                                    "text_align": "center",
+                                    "text_size": "normal"
+                                }
+                            ],
+                            "weight": 4
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**${param2}**",
+                                    "text_align": "center",
+                                    "text_size": "normal"
+                                }
+                            ],
+                            "weight": 4
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**${param3}**",
+                                    "text_align": "center",
+                                    "text_size": "normal"
+                                }
+                            ],
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "58px",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**查看**",
+                                    "text_align": "center",
+                                    "text_size": "normal"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "tag": "repeat",
+                    "variable": "object_list",
+                    "elements": [
+                        {
+                            "tag": "column_set",
+                            "flex_mode": "none",
+                            "background_style": "default",
+                            "horizontal_spacing": "0px",
+                            "horizontal_align": "left",
+                            "columns": [
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "vertical_align": "top",
+                                    "vertical_spacing": "28px",
+                                    "background_style": "default",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color='blue'>${object_list.param1}</font>",
+                                            "text_align": "center",
+                                            "text_size": "notation"
+                                        }
+                                    ],
+                                    "weight": 4
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "vertical_align": "top",
+                                    "vertical_spacing": "28px",
+                                    "background_style": "default",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color=\"green\">${object_list.param2}</font>",
+                                            "text_align": "center",
+                                            "text_size": "notation"
+                                        }
+                                    ],
+                                    "weight": 4
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "weighted",
+                                    "vertical_align": "top",
+                                    "vertical_spacing": "28px",
+                                    "background_style": "default",
+                                    "elements": [
+                                        {
+                                            "tag": "markdown",
+                                            "content": "<font color='red'>${object_list.param3}</font>",
+                                            "text_align": "center",
+                                            "text_size": "notation"
+                                        }
+                                    ],
+                                    "weight": 1
+                                },
+                                {
+                                    "tag": "column",
+                                    "width": "58px",
+                                    "vertical_align": "top",
+                                    "vertical_spacing": "28px",
+                                    "background_style": "default",
+                                    "elements": [
+                                        {
+                                            "tag": "button",
+                                            "text": {
+                                                "tag": "plain_text",
+                                                "content": ""
+                                            },
+                                            "type": "primary",
+                                            "complex_interaction": true,
+                                            "width": "default",
+                                            "size": "tiny",
+                                            "icon": {
+                                                "tag": "standard_icon",
+                                                "token": "mosaic-smear_outlined"
+                                            },
+                                            "value": {
+                                                "name": "object.inspect",
+                                                "object_param_1": "${object_list.param1}",
+                                                "object_param_2": "${object_list.param2}",
+                                                "object_param_3": "${object_list.param3}",
+                                                "id": "${object_list.id}"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            "margin": "16px 0px 0px 0px"
+                        }
+                    ]
+                }
+            ]
+        },
+        "i18n_header": {}
+    },
+    "apply":
+    {
+        "config": {
+            "update_multi": true
+        },
+        "i18n_elements": {
+            "zh_cn": [
+                {
+                    "tag": "column_set",
+                    "flex_mode": "none",
+                    "background_style": "default",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**🏆状态：**\n${param2}",
+                                    "text_align": "left",
+                                    "text_size": "normal"
+                                }
+                            ],
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**🔢编号：**\n${param1}",
+                                    "text_align": "left",
+                                    "text_size": "normal"
+                                }
+                            ],
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "16px 0px 0px 0px"
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "background_style": "default",
+                    "horizontal_spacing": "8px",
+                    "horizontal_align": "left",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**🗳当前位置：**\n${param3}",
+                                    "text_align": "left",
+                                    "text_size": "normal"
+                                }
+                            ],
+                            "weight": 1
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "vertical_align": "top",
+                            "vertical_spacing": "8px",
+                            "background_style": "default",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "**📝备注：**\n${param4}",
+                                    "text_align": "left",
+                                    "text_size": "normal"
+                                }
+                            ],
+                            "weight": 1
+                        }
+                    ],
+                    "margin": "16px 0px 0px 0px"
+                },
+                {
+                    "tag": "action",
+                    "layout": "bisected",
+                    "actions": [
+                        {
+                            "tag": "button",
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "申领"
+                            },
+                            "type": "primary",
+                            "complex_interaction": true,
+                            "width": "100px",
+                            "size": "small",
+                            "icon": {
+                                "tag": "standard_icon",
+                                "token": "arrow-up_outlined"
+                            },
+                            "value": {
+                                "name": "object.apply",
+                                "id": "${param1}"
+                            }
+                        },
+                        {
+                            "tag": "button",
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "返回"
+                            },
+                            "type": "primary",
+                            "complex_interaction": true,
+                            "width": "100px",
+                            "size": "small",
+                            "icon": {
+                                "tag": "standard_icon",
+                                "token": "left_outlined"
+                            },
+                            "value": {
+                                "name": "back",
+                                "id": "${father_id}"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "i18n_header": {
+            "zh_cn": {
+                "title": {
+                    "tag": "plain_text",
+                    "content": "${title}"
+                },
+                "subtitle": {
+                    "tag": "plain_text",
+                    "content": ""
+                },
+                "template": "green"
+            }
+        }
+    }
+}

@@ -36,8 +36,9 @@ class ApiClient(object):
     @staticmethod
     def _check_error_response(resp):
         # check if the response contains error information
-        if resp.status_code != 200:
-            resp.raise_for_status()
+        # 因调用飞书API接口错误时会传回非200状态码，故不采用状态码判断
+        # if resp.status_code != 200:
+        #     resp.raise_for_status()
         response_dict = resp.json()
         code = response_dict.get("code", -1)
         if code != 0:
@@ -50,8 +51,6 @@ class MessageApiClient(ApiClient):
         # self.sent_message_dict = {}
 
     #消息api
-    def send_text_with_open_id(self, open_id, content):
-        return self.send("open_id", open_id, "text", content)
     def send_text_with_user_id(self, user_id, content):
         return self.send("user_id", user_id, "text", content)
     def send_interactive_with_user_id(self, user_id, content):
@@ -75,9 +74,28 @@ class MessageApiClient(ApiClient):
         }
 
         resp = requests.post(url=url, headers=headers, json=req_body)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
 
+    def recall(self, message_id):
+        self._authorize_tenant_access_token()
+        url = "{}/open-apis/im/v1/messages/{}".format(
+            self._lark_host, message_id
+        )
+        headers = {
+            "Authorization": "Bearer " + self.tenant_access_token,
+        }
+
+        resp = requests.delete(url=url, headers=headers)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
+        return resp.json()
+    
 class SpreadsheetApiClient(ApiClient):
     #电子表格api
     def fetchSheet(self, spreadsheet_token):
@@ -88,7 +106,10 @@ class SpreadsheetApiClient(ApiClient):
         }
 
         resp = requests.get(url=url, headers=headers)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
 
         return resp.json()
 
@@ -102,7 +123,10 @@ class SpreadsheetApiClient(ApiClient):
         }
 
         resp = requests.get(url=url, headers=headers)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
 
     def modifySheet(self, spreadsheetToken, sheetId, range, values):
@@ -120,7 +144,10 @@ class SpreadsheetApiClient(ApiClient):
             }
         }
         resp = requests.put(url=url, headers=headers, data=json.dumps(req_body))
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
 
 class ContactApiClient(ApiClient):
     #通讯录api
@@ -137,7 +164,10 @@ class ContactApiClient(ApiClient):
             'department_id_type': department_id_type,
         }
         resp = requests.get(url=url, headers=headers, params=params)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
     
     def get_users_batch(self, user_ids, user_id_type = 'open_id'):
@@ -153,7 +183,10 @@ class ContactApiClient(ApiClient):
             'user_id_type': user_id_type,
         }
         resp = requests.get(url=url, headers=headers, params=params)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
 
 class CloudApiClient(ApiClient):
@@ -176,7 +209,10 @@ class CloudApiClient(ApiClient):
         }
     
         resp = requests.post(url=url, headers=headers, json=req_body)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
     
     def getDocMetadata(self, doc_token, doc_type, user_id_type='user_id'):
@@ -200,7 +236,10 @@ class CloudApiClient(ApiClient):
         }
     
         resp = requests.post(url=url, headers=headers, json=req_body, params=params)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
 
 class ApprovalApiClient(ApiClient):
@@ -219,7 +258,10 @@ class ApprovalApiClient(ApiClient):
         }
     
         resp = requests.post(url=url, headers=headers, json=req_body)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
 
     def subscribe(self, approval_code):
@@ -230,7 +272,10 @@ class ApprovalApiClient(ApiClient):
         }
 
         resp = requests.post(url=url, headers=headers)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
 
     def fetch_instance(self, instance_id):
@@ -241,7 +286,10 @@ class ApprovalApiClient(ApiClient):
         }
 
         resp = requests.get(url=url, headers=headers)
-        self._check_error_response(resp)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            print(f"Caught an error: {e.msg}")
         return resp.json()
 
     

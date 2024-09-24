@@ -73,8 +73,11 @@ class ApiManagement(object):
 
     def get_item(self, oid):
         info = self.sql.fetchone('item_info', 'id', int(oid))
-        father = self.sql.fetchone('item_list', 'id', info[1])
-        return self.return_itemTable_by_info(info, father[2])
+        if info:
+            father = self.sql.fetchone('item_list', 'id', info[1])
+            return self.return_itemTable_by_info(info, father[2])
+        else:
+            raise Exception(f"无法找到目标物品 oid:{str(oid)}")
 
     def get_items(self, father=None, father_name=None):
         if not (father or father_name):
@@ -112,7 +115,7 @@ class ApiManagement(object):
                 'root': member[2]
             }
         else:
-            return None
+            raise Exception(f"无法找到目标用户 user_id:{user_id}")
     
     def get_members_root(self):
         members = self.sql.fetchall('members', 'root', 1)
@@ -134,83 +137,81 @@ class ApiManagement(object):
         self.sql.update('members', ('user_id',user_id), {'root':0})
         self.sql.commit()
 
-    
-
-    #TODO:统一变量名，便于使用params进行配置
-    def add_item(self, father=None, num=1, \
-                 father_name=None, num_broken=None,\
+    def add_item(self, name_id=None, name=None,  \
+                  num=1, num_broken=None,\
                   category_name=None, category_id=None, params=None):
         if params:
-            father = params.get('father')
+            name_id = params.get('name_id')
             num = params.get('num')
-            father_name = params.get('father_name') if params.get('father_name') else params.get('name')
+            name = params.get('name')
             num_broken = params.get('num_broken')
             category_name = params.get('category_name')
             category_id = params.get('category_id')
 
         # 查找父记录
         #TODO：无法添加同名物品到不同分类            
-        if father:
-            father_recoder = self.sql.fetchone('item_list', 'id', father)
-        elif father_name:
-            father_recoder = self.sql.fetchone('item_list', 'name', father_name)
+        if name_id:
+            father_recoder = self.sql.fetchone('item_list', 'id', name_id)
+        elif name:
+            father_recoder = self.sql.fetchone('item_list', 'name', name)
         else:
             raise Exception("缺少必要的参数")
         
         if not father_recoder:
-            if (category_name or category_id) and father_name:
-                father = self.add_list(father_name=category_name, father=category_id, name=father_name)
+            if (category_name or category_id) and name:
+                name_id = self.add_list(category_name=category_name, category_id=category_id, name=name, params=params)
             else:
-                raise Exception(f"父记录list Id:{father if father else father_name} 未找到，且缺少参数无法新建，跳过插入")
+                raise Exception(f"父记录list Id:{name_id if name_id else category_name} 未找到，且缺少参数无法新建，跳过插入")
         else:
-            father = father_recoder[0]
+            name_id = father_recoder[0]
 
-        self_recoder = self.sql.fetchall('item_info', 'father', father)
-        new_id = (1000*father) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
+        self_recoder = self.sql.fetchall('item_info', 'father', name_id)
+        new_id = (1000*name_id) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
         for i in range(int(num) if num else 1):
             # 设置Id，进行添加
             self.sql.insert('item_info', {
                 'id':new_id+i,
-                'father':father,
+                'father':name_id,
             })
         if num_broken:
             for i in range(num_broken):
                 self.sql.update('item_info', ('id',i+new_id), {'useable':3})
         self.sql.commit()
 
-    def add_items_until_limit(self, father=None, num=1, father_name=None, num_broken=None, category_name=None, category_id=None):
-        if father:
-            father_recoder = self.sql.fetchone('item_list', 'id', father)
-        elif father_name:
-            father_recoder = self.sql.fetchone('item_list', 'name', father_name)
+    def add_items_until_limit(self, name_id=None, num=1, name=None, num_broken=None, category_name=None, category_id=None):
+        if name_id:
+            father_recoder = self.sql.fetchone('item_list', 'id', name_id)
+        elif name:
+            father_recoder = self.sql.fetchone('item_list', 'name', name)
         else:
             raise Exception("缺少必要的参数")
         if father_recoder:
             num = father_recoder[3] - num if father_recoder[3] - num > 0 else 0
             num_broken = father_recoder[3] - father_recoder[5]
-        self.add_item(father,num,father_name,num_broken,category_name,category_id)
+        self.add_item(name_id,name,num,num_broken,category_name,category_id)
 
 
-    def add_list(self, father=None, father_name=None, name=None, params=None):
+    def add_list(self, name=None, category_name=None, category_id=None, params=None):
         if params:
-            father = params.get('father')
-            father_name = params.get('father_name')
             name = params.get('name')
+            category_name = params.get('category_name')
+            category_id = params.get('category_id')
+
         # 查找父记录
-        if father:
-            father_recoder = self.sql.fetchone('item_category', 'id', father)
-        elif father_name:
-            father_recoder = self.sql.fetchone('item_category', 'name', father_name)
+        if category_id:
+            father_recoder = self.sql.fetchone('item_category', 'id', category_id)
+        elif category_name:
+            father_recoder = self.sql.fetchone('item_category', 'name', category_name)
         else:
             raise Exception("缺少必要的参数")
         
         if not father_recoder:
-            if  father_name:
-                father = self.add_category(father_name)
+            if  category_name:
+                category_id = self.add_category(category_name)
             else:
-                raise Exception(f"父记录category Id:{father if father else father_name} 未找到，且缺少参数无法新建，跳过插入")
+                raise Exception(f"父记录category {category_name if category_name else category_id} 未找到，且缺少参数无法新建，跳过插入")
         else:
-            father = father_recoder[0]
+            category_id = father_recoder[0]
 
         # 查找是否已存在
         self_recoder = self.sql.fetchone('item_list', 'name', name)
@@ -218,37 +219,37 @@ class ApiManagement(object):
             print(f"当前列表 {name} 已存在")
             return
         # 设置Id，进行添加
-        self_recoder = self.sql.fetchall('item_list', 'father', father)
-        new_id = (1000*father) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
+        self_recoder = self.sql.fetchall('item_list', 'father', category_id)
+        new_id = (1000*category_id) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
         self.sql.insert('item_list', {
             'id':new_id,
-            'father':father,
+            'father':category_id,
             'name':name
         })
         self.sql.commit()
         return new_id #item_info`s father
 
-    def add_category(self, name, params=None):
+    def add_category(self, category_name=None, params=None):
         if params:
-            name = params.get('name')
+            category_name = params.get('category_name')
 
         # 查找是否已存在
-        self_recoder = self.sql.fetchone('item_category', 'name', name)
+        self_recoder = self.sql.fetchone('item_category', 'name', category_name)
         if self_recoder:
-            print(f"当前类 {name} 已存在")
+            print(f"当前类 {category_name} 已存在")
             return
         # 设置Id，进行添加
         self_recoder = self.sql.getall('item_category')
         new_id = (int(self_recoder[-1][0]) + 1 if self_recoder else 1)
         self.sql.insert('item_category', {
             'id':new_id,
-            'name':name
+            'name':category_name
         })
         self.sql.commit()
         return new_id
 
     #TODO:删除父节点时同时删除所有子节点
-    def del_item(self, id, params=None):
+    def del_item(self, id=None, params=None):
         if params:
             id = params.get('id')
 
@@ -288,7 +289,7 @@ class ApiManagement(object):
         
         do = item_info['do'] + do if do else item_info['do']
 
-        self.sql.insert('logs', {'time':int(time.time()),
+        self.sql.insert('logs', {'time':int(time.time()*1000),
                                  'userId':user_id,
                                  'operation':'APPLY',
                                  'object':oid,
@@ -301,7 +302,7 @@ class ApiManagement(object):
     
     def set_item_state(self, operater_user_id=None, operation=None,\
                         oid=None, useable=None, wis=None, do=None):
-        self.sql.insert('logs', {'time':int(time.time()),
+        self.sql.insert('logs', {'time':int(time.time()*1000),
                                  'userId':operater_user_id,
                                  'operation':operation,
                                  'object':oid,
@@ -311,7 +312,40 @@ class ApiManagement(object):
                         'wis':wis,
                         'do':do})
         self.sql.commit()
+
+    def return_item(self, user_id, oid):
+        try:
+            member = self.get_member(user_id)
+            item_info = self.get_item(oid)
+        except Exception as e:
+            return f"Error: {e}"
         
+        if item_info['useable'] == '报废':
+            return "Error: 它已经报废了，你真的要放进仓库吗"
+        if item_info['useable'] == '申请中':
+            return "Error: 该物品正在被申请，请先进行审批"
+        if item_info['wis'] != member['name'] and not member['root']:
+            return "Error: 你不是该物品的持有者"
+        else:
+            self.set_item_state(operater_user_id=user_id,operation='RETURN',\
+                                oid=oid,useable=1,wis='仓库',do='null')
+            return f'你{"帮忙" if member['root'] else ""}归还了物品 {item_info['name']} oid:{oid}'
+
+    def update_card(self, user_id, message_id, create_time): #更新用户和对应的信息卡片信息
+        restule = self.sql.update('members',('user_id',user_id),{   \
+            'card_message_id':message_id,'card_message_create_time':create_time})
+        self.sql.commit()
+        return restule
+        
+    def is_alive_card(self, user_id):
+        result = self.sql.fetchone('members','user_id',user_id)
+        return result[3] if (result[3] not in ('null',None) and \
+            time.time()-int(result[4])/1000<1036800) else None
+    
+    def is_user_root(self, user_id):
+        result = self.sql.fetchone('members','user_id',user_id)
+        return result[2]==1
+    
     def get_md5(self):
         table_list = self.sql.gettable()
         table_checksum_list = []

@@ -1,5 +1,6 @@
 import pymysql
 import time
+from pymysql import OperationalError
 
 class MySqlError(Exception):
     def __init__(self, arg):
@@ -33,12 +34,16 @@ class MySql:
     def refresh(self):
         try:
             self.__db.ping()
-        except:
-            print('SQL error, try to reconnect')
-            self.__cursor.close()
-            self.__db.close()
+        except OperationalError:
+            print('SQL error, trying to reconnect')
+            if self.__cursor is not None:
+                self.__cursor.close()
+            if self.__db is not None:
+                self.__db.close()
             self.connect()
             self.__cursor = self.__db.cursor()
+        except Exception as e:
+            print(f"Unexpected error during refresh: {e}")
 
     def fetchone(self, table, key, value):
         self.refresh()
@@ -48,7 +53,7 @@ class MySql:
             result = self.__cursor.fetchone()
             return result
         except Exception as e:
-            raise Exception(f"Error occurred while fetching data: {str(e)}") from e
+            raise Exception(f"Error occurred while fetching data: {e}")
 
     def fetchall(self, table, key, value):
         self.refresh()
@@ -59,7 +64,7 @@ class MySql:
             result = self.__cursor.fetchall()
             return result
         except Exception as e:
-            raise Exception(f"Error occurred while fetching data: {str(e)}") from e
+            raise Exception(f"Error occurred while fetching data: {e}")
 
     def gettable(self):
         self.refresh()
