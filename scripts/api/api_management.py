@@ -2,6 +2,7 @@ from . import api_mysql
 import hashlib
 import ujson
 import time
+import logging
 
 '''
 TODO:测试下所有接口对错误类型的输入会不会产生错误
@@ -92,6 +93,40 @@ class ApiManagement(object):
         info = self.sql.fetchall('item_info', 'father', int(father_id))
         return self.return_itemTable_by_info(info, name=item_name)
     
+    def get_member_items(self, user_id=None, user_name=None):
+        if not user_name:
+            if user_id:
+                user_name = self.get_member(user_id)['name']
+            else:
+                logging.error(f'缺少参数')
+            
+        member_items = self.sql.fetchall('item_info','wis',user_name)
+
+        if not member_items:
+            return None
+        
+        name_id_map = {}
+        member_items_out = {'oid':[], 'name':[], 'do':[]} 
+        for item in member_items:
+            oid     = item[0]
+            name_id = str(item[1])
+            do      = item[4]
+
+            if name_id not in name_id_map:
+                item_list = self.get_list(int(oid/1000000))
+                for name_id_,name_ in zip(item_list['id'],item_list['name']):
+                    name_id_map[f'{name_id_}']=name_
+        
+            name = name_id_map[name_id]
+
+            member_items_out['oid'].append(oid)
+            member_items_out['name'].append(name)
+            member_items_out['do'].append(do)
+        logging.info(member_items_out)
+        
+        return member_items_out
+
+
     def add_member(self, user_id, user_name):
         if not self.get_member(user_id):
             ins = {
@@ -186,8 +221,8 @@ class ApiManagement(object):
         else:
             raise Exception("缺少必要的参数")
         if father_recoder:
-            num = father_recoder[3] - num if father_recoder[3] - num > 0 else 0
-            num_broken = father_recoder[3] - father_recoder[5]
+            num = num - father_recoder[3] if num - father_recoder[3] > 0 else 0
+            num_broken = num_broken - father_recoder[5] if num_broken - father_recoder[5] > 0 else 0
         self.add_item(name_id,name,num,num_broken,category_name,category_id)
 
 
@@ -339,7 +374,7 @@ class ApiManagement(object):
         
     def is_alive_card(self, user_id):
         result = self.sql.fetchone('members','user_id',user_id)
-        return result[3] if (result[3] not in ('null',None) and \
+        return result[3] if (result and result[3] not in ('null',None) and \
             time.time()-int(result[4])/1000<1036800) else None
     
     def is_user_root(self, user_id):

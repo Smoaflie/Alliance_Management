@@ -7,9 +7,15 @@
         "port": "3306"
     },
     "sheet": {
-        "token": "KlYDsOIVphwX8ItaJ90cf156n0s"
+        "token": "KlYDsOIVphwX8ItaJ90cf156n0s",
+        "sheet_id_TOTAL": "3e1df5",
+        "sheet_id_ITEM": "eGygaA"
     },
     "approval": {
         "approval_code": "74FB3848-8DD6-4E09-90B5-0260B9546D8A"
+    },
+    "message_card": {
+        "display_card_token":"AAq7rfpwDmKrO",
+        "apply_card_token": "AAq7gOddRQSIf"
     }
 }

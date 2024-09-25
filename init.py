@@ -50,7 +50,7 @@ if __name__ == '__main__':
     print("已定位数据库 %s" % settings['mysql']['db'])
 
     # 修改事务隔离级别
-    sql = 'SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;'
+    sql = 'SET GLOBAL TRANSACTION ISOLATION LEVEL READ COMMITTED;'
     cursor.execute(sql)
     print("已修改事物隔离级别为 READ COMMITTED")
     # 定义所有需要创建的表

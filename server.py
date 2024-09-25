@@ -2,7 +2,7 @@
 import os
 import logging
 import requests
-from scripts.api.api_client import MessageApiClient, SpreadsheetApiClient, ContactApiClient, CloudApiClient, ApprovalApiClient
+from scripts.api.api_client import LarkException, MessageApiClient, SpreadsheetApiClient, ContactApiClient, CloudApiClient, ApprovalApiClient
 from scripts.api.api_event import MessageReceiveEvent, UrlVerificationEvent, EventManager, BotMenuClickEvent, CardActionEvent, ApprovalInstanceEvent
 from flask import Flask, jsonify, request, abort
 from dotenv import load_dotenv, find_dotenv
@@ -65,17 +65,10 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
         content = {
             'type':'template',
             'data':create_messageInteractive(object_id='0'),
-            'config':{
-                "update_multi":True,
-                "enable_forward":False,
-                "width_mode": 'fill'
-            }
         }
         update_messageInteractive(user_id, content)
     elif event_key == 'custom_menu.test':
-        # TODO:调试用
-        result = sql.fetchone('members','user_id','f1549d18')
-        DEBUG_OUT(data=result)
+        # 调试用
         pass
     return jsonify()
 
@@ -94,6 +87,11 @@ def card_action_event_handler(req_data: CardActionEvent):
                 'type':'error',
                 'content':'Error: 该消息卡片已过期，请使用新卡片'
             }
+        
+    elif value.name == 'home':
+        data = create_messageInteractive(object_id='0')
+    elif value.name == 'self':
+        data = create_messageInteractive(object_id='-1', user_id=user_id)
     elif value.name == 'object.inspect':
         data = create_messageInteractive(object_id=value.id)
     elif value.name == 'back':
@@ -115,7 +113,6 @@ def card_action_event_handler(req_data: CardActionEvent):
 
             result = approval_api_event.create(approval_code=APPROVAL_CODE, user_id=user_id,\
                                     form=ujson.dumps(form))
-            DEBUG_OUT(data=result)
             toast = {
                 'type':'success',
                 'content':'success: 已发送申请'
@@ -141,11 +138,12 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
     instance = approval_api_event.fetch_instance(req_data.event.instance_code)
     status = req_data.event.status
     applicant_user_id = instance.get('data').get('timeline')[0].get('user_id')
-    operator_user_id = instance.get('data').get('timeline')[-1].get('user_id')
+    #TODO:同意和拒绝的结构不一样，现在写的是不好的解决办法
+    operator_user_id = instance.get('data').get('timeline')[-1].get('user_id') if \
+                instance.get('data').get('timeline')[-1].get('user_id') else instance.get('data').get('timeline')[-2].get('user_id')
     if instance.get('data').get('approval_name') == "物品领用":
         if status in ('APPROVED', 'REJECTED','CANCELED','DELETED'): 
             form = ujson.loads(instance.get('data').get('form'))
-            DEBUG_OUT(data=form)
             params = {}
             #从便于移植的角度看，这里应该使用遍历，但控件中有个fieldList……
             params['do'] = form[0].get('value')
@@ -154,7 +152,6 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
             params['num'] = form[2].get('value')[0][1].get('value')
             params['oid'] = form[2].get('value')[0][2].get('value')
             applicant_name = management.get_member(applicant_user_id).get('name')
-            DEBUG_OUT(data=form)
             if status in ('REJECTED','CANCELED','DELETED'): 
                 management.set_item_state(oid=params['oid'],operater_user_id=operator_user_id,operation='MODIFY',\
                                         useable=1,wis=applicant_name,do=params['do'])
@@ -162,7 +159,6 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
                 management.set_item_state(oid=params['oid'],operater_user_id=operator_user_id,operation='MODIFY',\
                                         useable=0,wis=applicant_name,do=params['do'])
     result = 'success'
-    DEBUG_OUT(data=result)
     
     return jsonify()
 
@@ -172,214 +168,92 @@ Flask app function
 @app.route("/", methods=["POST"])
 def callback_event_handler():    
     # 飞书事件回调
-    DEBUG_OUT(data=request.json)
+    # DEBUG_OUT(data=request.json)
     logging.info("fetch request.")
     event_handler, event = event_manager.get_handler_with_event(VERIFICATION_TOKEN, ENCRYPT_KEY)
     
     return event_handler(event)
 
-@app.route('/operation/get_materials')
-def get_materials():
-    if request.args.get('param') == 'category':   #获取物资分组
-        return management.get_category()
-    elif request.args.get('param') == 'materials':      #获取物资信息
-        oid = request.args.get('id')
-        if oid is None: #如id为空，则获取某组物资或全部物资
-            father = request.args.get('father')
-            if father:  #获取某组物资信息
-                return management.get_list(father)
-            else:   #获取全部物资信息
-                return management.get_all()        
-        else:   #如id不为空，则获取对应物资
-            return management.get_item(oid)
-        #TODO： id指向空物品处理  
-    else:
-        abort(400)
-
-@app.route('/operation/submit', methods=['POST'])
-def o_submit():
-    info = {
-            'time': "%s" % (datetime.now()),
-            'openid': request.form.get('openid'),
-            'operation': request.form.get('op'),
-            'object': request.form.get('oid'),
-            'name': request.form.get('name'),
-            'num': request.form.get('num'),
-            'do': request.form.get('do'),
-            'wis': request.form.get('where'),
-            'verify': 0
-            }
-    if info['operation'] == 'use':
-        info['wis'] = request.form.get('pwhere')
-    if info['do'] == '':
-        info['do'] = None
-
-    errors = []
-
-    #TODO:应处理特殊字符而非抛出错误
-    is_valid(info['name'], errors)
-    is_valid(info['do'], errors)
-    if not errors:
-        sql.insert('logs', info)
-    else:
-        return jsonify({'result': 'success','error': errors})
-        
-
-    msg = ''
-    #TODO: info['name'] = name = sql.fetchone('members', 'openid', info['openid'])[1]
-    # name = sql.fetchone('members', 'openid', info['openid'])[1]
-    name = info[name]
-    if info['operation'] == 'in':
-        sql.update('item_info', ['useable', 1, 'wis', info['wis'], 'do', info['do']], ['id', info['object']])
-        obj = sql.fetchone('item_list', 'id', int(str(info['object'])[:6]))[2]
-        msg = "%s 还入 %s %s 到 %s 仓库" % (name, obj, str(info['object']), info['wis'])
-    elif info['operation'] == 'out':
-        sql.update('item_info', ['useable', 0, 'wis', info['name'], 'do', info['do']], ['id', info['object']])
-        obj = sql.fetchone('item_list', 'id', int(str(info['object'])[:6]))[2]
-        msg = "%s 借出 %s %s" % (name, obj, str(info['object']))
-    elif info['operation'] == 'use':
-        sql.update('item_info', ['useable', 0, 'wis', info['wis'], 'do', info['do']], ['id', info['object']])
-        obj = sql.fetchone('main', 'id', int(str(info['object'])[:6]))[1]
-        msg = "%s 在 %s 使用 %s %s" % (name, info['wis'], obj, str(info['object']))
-    # elif info['operation'] == 'create':
-    #     sql.update('item_info', ['useable', 'id'], [1, info['object']])
-    #     sql.update('item_info', ['wis', 'id'], [info['wis'], info['object']])
-    #     sql.update('item_info', ['do', 'id'], [info['do'], info['object']])
-    #     use = sql.fetchone('main', 'id', int(str(info['object'])[:6]))[3] + 1
-    #     sql.update('main', ['useable', 'id'], [use, int(str(info['object'])[:6])])
-    # elif info['operation'] == 'cbf':
-    #     sql.update('item_info', ['useable', 'id'], [1, info['object']])
-    #     use = sql.fetchone('main', 'id', int(str(info['object'])[:6]))[3] + 1
-    #     sql.update('item_info', ['useable', 'id'], [use, int(str(info['object'])[:6])])
-    # elif info['operation'] == 'bf':
-    #     sql.update('item_info', ['useable', 'id'], [3, info['object']])
-    #     use = sql.fetchone('main', 'id', int(str(info['object'])[:6]))[3] - 1
-    #     sql.update('main', ['useable', 'id'], [use, int(str(info['object'])[:6])])
-    #     sql.update('item_info', ['do', 'id'], [info['do'], info['object']])
-    # elif info['operation'] == 're':
-    #     sql.update('item_info', ['useable', 'id'], [2, info['object']])
-    #     use = sql.fetchone('main', 'id', int(str(info['object'])[:6]))[3] - 1
-    #     sql.update('main', ['useable', 'id'], [use, int(str(info['object'])[:6])])
-    #     sql.update('item_info', ['do', 'id'], [info['do'], info['object']])
-    #     sql.update('item_info', ['wis', 'id'], ['送修中', info['object']])
-    elif info['operation'] == 'add_category':
-        last = sql.getall('item_category')[-1][0]
-        inf = {
-            'id': last + 1,
-            'name': info['do'],
-        }
-        sql.insert('item_category', inf)
-    elif info['operation'] == 'add_item':
-        i = sql.fetchall('item_info', 'father', info['object'])
-        if i != ():
-            i = i[-1][0] + 1
-        else:
-            i = int(info['object']) * 1000 + 1
-        for j in range(int(info['num'])):
-            ins = {
-                'id': i + j,
-                'father': i,
-                'wis': info['wis'],
-                'do': info['do']
-            }
-            sql.insert('item_info', ins)
-    sql.commit()
-    return jsonify({'result': 'success', 'msg': msg})
-
-@app.route('/verify/list')
-def ve_list():
-    r = sql.fetchall('logs', 'verify', 0)
-    if r == ():
-        return '{"暂无需要确认操作":""}'
-    info = {
-        'ID': [],
-        '时间': [],
-        '申请人': [],
-        '操作类型': [],
-        '操作对象': [],
-        '位置': [],
-        '备注': []
-    }
-    for it in r:
-        info['ID'].append(str(it[0]))
-        info['时间'].append(str(it[1]))
-        if it[3] == 'in':
-            info['操作类型'].append('还入')
-        elif it[3] == 'use':
-            info['操作类型'].append('使用')
-        elif it[3] == 'register':
-            info['操作类型'].append('注册')
-        elif it[3] == 'leave':
-            info['操作类型'].append('请假')
-        else:
-            info['操作类型'].append('借出')
-        if it[3] == 'register':
-            info['申请人'].append(sql.fetchone('logs', 'id', it[0])[5])
-        else:
-            info['申请人'].append(sql.fetchone('members', 'openid', it[2])[1])
-        info['操作对象'].append(str(it[4]))
-        info['位置'].append(str(it[9]))
-        info['备注'].append(str(it[8]))
-    return ujson.dumps(info)
-
 @app.before_first_request
 def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入members表中
-    user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
-    items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
-    user_list = list()
-    for item in items:
-        user_list.append({
-            'name':item['name'],
-            'user_id':item['user_id']
-        })
-    #校验md5值，检测是否有变化
-    list_string = ''.join(map(str, user_list))
-    MD5remote = hashlib.md5()
-    MD5remote.update(list_string.encode('utf-8'))
-    MD5remote = MD5remote.hexdigest()
+    try:
+        user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
+        items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
+        user_list = list()
+        for item in items:
+            user_list.append({
+                'name':item['name'],
+                'user_id':item['user_id']
+            })
+        #校验md5值，检测是否有变化
+        list_string = ''.join(map(str, user_list))
+        MD5remote = hashlib.md5()
+        MD5remote.update(list_string.encode('utf-8'))
+        MD5remote = MD5remote.hexdigest()
 
-    MD5local = sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
+        MD5local = sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
 
-    if MD5local == 'null' or MD5local is None:
-        sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
-        MD5local = '0'
-    else:
-        MD5local = MD5local[1]
+        if MD5local == 'null' or MD5local is None:
+            sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
+            MD5local = '0'
+        else:
+            MD5local = MD5local[1]
 
-    if MD5local != MD5remote:
-        management.add_member_batch(user_list)
-        sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
-        sql.commit()
-        print("add members from contact.")
+        if MD5local != MD5remote:
+            management.add_member_batch(user_list)
+            sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
+            sql.commit()
+            logging.info("add members from contact.")
+        else:
+            logging.info("skip add members from contact.")
+    except Exception as e:
+        raise Exception(f"尝试通过通讯录初始化用户列表失败，请重试\n{e}")
 
 @app.before_first_request
 def getItemsBySheets(): #从电子表格中获取物品信息
     #校验修改时间，检测是否有变化
-    latest_modify_time_remote = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')[0].get('latest_modify_time')
-    latest_modify_time_local = sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
-    if latest_modify_time_local == 'null' or latest_modify_time_local is None:
-        sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the spreadsheet.'})
-        latest_modify_time_local = '0'
-    else: 
-        latest_modify_time_local = latest_modify_time_local[1]
-    #如果物资表修改过（数据库数据过时），重新初始化物资数据库
-    if latest_modify_time_local != latest_modify_time_remote:
-        item_sheet = spreadsheet_api_client.fetchSheet(ITEM_SHEET_TOKEN).get('data').get('sheets')[0]
-        item_list = spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{item_sheet.get('sheet_id')}!A2:D").get('data').get('valueRange').get('values')
-        print('add item by sheet')
-        for item in item_list:
-            category_name = item[0]
-            item_name = item[1]
-            item_num_total = item[2] if item[2] else 1
-            item_num_broken = item[3] if item[3] else 0
-            management.add_items_until_limit(name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
-        sql.update('logs',('do','used to detect changes in the spreadsheet.'),{'time':latest_modify_time_remote})
-        sql.commit()
+    #TODO:HERE ERROR
+    try:
+        DocMetadata = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
+        if not DocMetadata:
+            raise Exception(f"ITEM_SHEET_TOKEN:{ITEM_SHEET_TOKEN} 无法找到")
+        
+        latest_modify_time_remote = DocMetadata[0].get('latest_modify_time') #取[0]是因为使用token只会搜到一个文件
+        latest_modify_time_local = sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
+        if latest_modify_time_local == 'null' or latest_modify_time_local is None:
+            sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the spreadsheet.'})
+            latest_modify_time_local = '0'
+        else: 
+            latest_modify_time_local = latest_modify_time_local[1]
+        #如果物资表修改过（数据库数据过时），重新初始化物资数据库
+        if latest_modify_time_local != latest_modify_time_remote:
+            sheet_date =  spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{SHEET_ID_TOTAL}!A2:D")
+            if not sheet_date.get('data'):
+                raise Exception(f"SHEET_ID_TOTAL:{SHEET_ID_TOTAL} 无法找到")
+            
+            item_list = sheet_date.get('data').get('valueRange').get('values')
+            logging.info('add item by sheet')
+            for item in item_list:
+                category_name = item[0]
+                item_name = item[1]
+                item_num_total = item[2] if item[2] else 1
+                item_num_broken = item[3] if item[3] else 0
+                management.add_items_until_limit(name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
+            sql.update('logs',('do','used to detect changes in the spreadsheet.'),{'time':latest_modify_time_remote})
+            sql.commit()
+        else:
+            logging.info('skip add item by sheet')
+    except Exception as e:
+        raise Exception(f"{e}\n如需通过电子表格初始化数据库，请创建一个电子表格，按格式填入值后，确认`settings.json`中['sheet']:['token']和['sheet_id_TOTAL']是否正确。否则注释掉getItemsBySheets()")
 
 @app.before_first_request
 def subApprovalEvent(): #订阅审批事件
     #只能订阅一次，因此第一次初始化后会一直弹subscription existed异常（已捕获）
-    approval_api_event.subscribe(APPROVAL_CODE)
+    #确认订阅成功后，你完全可以注释掉它
+    try:
+        approval_api_event.subscribe(APPROVAL_CODE)
+    except:
+        logging.info("subApprovalEvent() 只能订阅一次，因此你完全可以注释掉它")
 
 @app.errorhandler
 def msg_error_handler(ex):
@@ -406,21 +280,23 @@ def update_messageInteractive(user_id, content):
         message_api_client.recall(alive_card_id)
 
     result = message_api_client.send_interactive_with_user_id(user_id, content)
+
     message_id = result.get('data').get('message_id')
     create_time = result.get('data').get('create_time')
     management.update_card(user_id,message_id,create_time)
     
-def create_messageInteractive(object_id=None, father_id=None):
+def create_messageInteractive(object_id=None, father_id=None, user_id=None):
     title_map = {
-        '1':{'template_id':'AAq7rfpwDmKrO', 'table':'item_category', 'title':"物资类型", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':""},
-        '2':{'template_id':'AAq7rfpwDmKrO', 'table':'item_list', 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':""},
-        '3':{'template_id':'AAq7rfpwDmKrO', 'table':'item_info', 'title':"物资仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态', 'param4':""},
-        '4':{'template_id':'AAq7gOddRQSIf', 'table':'item_info', 'title':"", 'param1':'', 'param2':'', 'param3':'', 'param4':""}
+        '1':{'template_id':DISPLAY_CARD_TOKEN, 'table':'item_category', 'title':"物资类型", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':""},
+        '2':{'template_id':DISPLAY_CARD_TOKEN, 'table':'item_list', 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':""},
+        '3':{'template_id':DISPLAY_CARD_TOKEN, 'table':'item_info', 'title':"物资仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态', 'param4':""},
+        '4':{'template_id':APPLY_CARD_TOKEN, 'table':'item_info', 'title':"", 'param1':'', 'param2':'', 'param3':'', 'param4':""},
+        '0':{'template_id':DISPLAY_CARD_TOKEN, 'table':'item_info', 'title':"个人仓库", 'param1':'ID', 'param2':'名称', 'param3':'备注', 'param4':""},
     }
     if object_id:
         object_id = int(object_id)
         _father_id = str(object_id)
-        title_id = '1' if object_id==0 else ('2' if object_id < 1000 else ('3' if object_id < 1000000 else '4') )
+        title_id = '0' if object_id==-1 else ('1' if object_id==0 else ('2' if object_id < 1000 else ('3' if object_id < 1000000 else '4') ) )
         _id = object_id
     elif father_id:
         father_id = int(father_id)
@@ -430,19 +306,23 @@ def create_messageInteractive(object_id=None, father_id=None):
     else:
         raise Exception("参数错误")
     
-    if title_id == '1':
+    if title_id == '0':
+        _list = management.get_member_items(user_id)
+        object_list =[{'param1': id_, 'param2': name_, 'param3': do_, 'id':id_} 
+                    for id_, name_, do_ in zip(_list['oid'], _list['name'], _list['do'])] if _list else None
+    elif title_id == '1':
         _list = management.get_category()
         object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_), 'id':id_} 
-                    for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])]
+                    for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
     elif title_id == '2':
         _list = management.get_list(father=_id)
         object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_), 'id':id_} 
-                    for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])]
+                    for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
     elif title_id == '3':
         _list = management.get_items(father=_id)
         object_list =[{'param1': id_, 'param2': name_, 'param3': useable_, 'id':id_} 
-                    for id_, name_, useable_ in zip(_list['id'], _list['name'], _list['useable'])]
-    else:
+                    for id_, name_, useable_ in zip(_list['id'], _list['name'], _list['useable'])] if _list else None
+    elif title_id == '4':
         object_list = []
         _item = management.get_item(oid=_id)
         title_map[title_id]['title'] = f"您正在查看 {_item['name']} 详细信息"
@@ -465,7 +345,7 @@ def create_messageInteractive(object_id=None, father_id=None):
         }
     }
     return data
-        
+
 def process_user_message(user_id, message, sender):
     reply_text = ""
     reply_map = {
@@ -488,6 +368,7 @@ def process_user_message(user_id, message, sender):
         'lsop':     {'command':command_list_op,         'needed_root':False},
         'search':   {'command':command_search_id,       'needed_root':False},
         'return':   {'command':command_return_item,     'needed_root':False},
+        'save':     {'command':command_save,            'needed_root':True},
     }
     #目前只能识别文字信息
     if message.message_type != 'text':
@@ -680,17 +561,50 @@ def command_get_help(reply_map, message, sender, object, params):
     {'return {{id}}':<{margin}} \t归还id对应的物品,只能还自己的，管理员可以帮忙归还
     '''
 
+def command_save(reply_map, message, sender, object, params):
+    try:
+        sheets = spreadsheet_api_client.fetchSheet(ITEM_SHEET_TOKEN).get('data').get('sheets')
+        item_sheet = next((sheet for sheet in sheets if sheet.get('sheet_id') == SHEET_ID_TOTAL), None)
+        start_line = end_line= 2
+        category = management.get_category()
+        for category_id,category_name in zip(category['id'],category['name']):
+            items_list = management.get_list(category_id)
+            values = []
+            for name,name_id in zip(items_list['name'],items_list['id']):
+                items_info = management.get_items(name_id, name)
+                if not items_info:
+                    continue
+                end_line += len(items_info['id'])
+                for oid,useable,wis,do in zip(items_info['id'],items_info['useable'],\
+                                                items_info['wis'],items_info['do']):
+                    value =[]
+                    value.append(oid)
+                    value.append(name)
+                    value.append(category_name)
+                    value.append(useable)
+                    value.append(wis)
+                    value.append(do)
+                    values.append(value)
+            spreadsheet_api_client.modifySheet(ITEM_SHEET_TOKEN,SHEET_ID_ITEM,f"A{start_line}:F{end_line-1}",values)
+            logging.info(f"已保存 {category_name} 类型的信息到电子表格中，行数{start_line}:{end_line-1}")
+            start_line = end_line
+        return reply_map['success']
+    except Exception as e:
+        return f"失败 {e}"
+
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     # 连接mysql服务器
     with open('settings.json', 'r') as f:
         settings = ujson.loads(f.read())
         sql = mysql.MySql(settings['mysql'])
-        ITEM_SHEET_TOKEN = settings['sheet']['token']
+        ITEM_SHEET_TOKEN = settings.get('sheet').get('token')
+        SHEET_ID_TOTAL = settings.get('sheet').get('sheet_id_TOTAL')
+        SHEET_ID_ITEM = settings.get('sheet').get('sheet_id_ITEM')
+
         management = ApiManagement(sql)
-        APPROVAL_CODE = settings['approval']['approval_code']
-    with open('message_card.json','r') as f:
-        message_card = ujson.loads(f.read())
-        CARD_DISPLAY = message_card['display']
-        CARD_APPLY = message_card['apply']
+        APPROVAL_CODE = settings.get('approval').get('approval_code')
+        DISPLAY_CARD_TOKEN = settings.get('message_card').get('display_card_token')
+        APPLY_CARD_TOKEN = settings.get('message_card').get('apply_card_token')
     # 启动服务
     app.run(host="0.0.0.0", port=3000, debug=True)

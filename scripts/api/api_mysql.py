@@ -1,6 +1,7 @@
 import pymysql
 import time
 from pymysql import OperationalError
+import logging
 
 class MySqlError(Exception):
     def __init__(self, arg):
@@ -29,7 +30,7 @@ class MySql:
                 time.sleep(1)
         # 如果达到最大尝试次数后仍未成功连接，则结束程序
         if attempt == retries:
-            raise Exception("无法连接到MySQL，超过最大重试次数。")
+            logging.error("无法连接到MySQL，超过最大重试次数。")
 
     def refresh(self):
         try:
@@ -53,7 +54,7 @@ class MySql:
             result = self.__cursor.fetchone()
             return result
         except Exception as e:
-            raise Exception(f"Error occurred while fetching data: {e}")
+            logging.error(f"Error occurred while fetching data: {e}")
 
     def fetchall(self, table, key, value):
         self.refresh()
@@ -64,7 +65,7 @@ class MySql:
             result = self.__cursor.fetchall()
             return result
         except Exception as e:
-            raise Exception(f"Error occurred while fetching data: {e}")
+            logging.error(f"Error occurred while fetching data: {e}")
 
     def gettable(self):
         self.refresh()
@@ -74,7 +75,7 @@ class MySql:
             result = self.__cursor.fetchall()
             return result
         except Exception as e:
-            raise Exception(f"Error occurred while show tables: {str(e)}") from e
+            logging.error(f"Error occurred while show tables: {str(e)}")
         
     def getall(self, table):
         self.refresh()
@@ -84,7 +85,7 @@ class MySql:
             result = self.__cursor.fetchall()
             return result
         except Exception as e:
-            raise Exception(f"Error occurred while fetching data: {str(e)}") from e
+            logging.error(f"Error occurred while fetching data: {str(e)}")
 
     def insert(self, table, data):
         self.refresh()
@@ -140,7 +141,7 @@ class MySql:
             result = self.__cursor.fetchall()
             return result
         except Exception as e:
-            raise Exception(f"Error occurred while get checksum: {str(e)}") from e
+            logging.error(f"Error occurred while get checksum: {str(e)}")
 
     def __del__(self):
         self.__cursor.close()
