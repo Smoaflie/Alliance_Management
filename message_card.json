@@ -4,234 +4,220 @@
         "config": {
             "update_multi": true
         },
-        "i18n_elements": {
-            "zh_cn": [
-                {
-                    "tag": "column_set",
-                    "flex_mode": "none",
-                    "background_style": "grey",
-                    "horizontal_spacing": "8px",
-                    "horizontal_align": "left",
-                    "columns": [
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "<font color=grey>**${title}**</font>",
-                                    "text_align": "left",
-                                    "text_size": "heading"
-                                }
-                            ],
-                            "weight": 1
-                        },
-                        {
-                            "tag": "column",
-                            "width": "100px",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "button",
-                                    "text": {
-                                        "tag": "plain_text",
-                                        "content": "返回"
-                                    },
-                                    "type": "default",
-                                    "complex_interaction": true,
-                                    "width": "default",
-                                    "size": "medium",
-                                    "icon": {
-                                        "tag": "standard_icon",
-                                        "token": "undo_outlined"
-                                    },
-                                    "value": {
-                                        "name": "back",
-                                        "id": "${father_id}"
+        "elements": [
+            {
+                "tag": "column_set",
+                "background_style": "grey",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "<font color=grey>**${title}**</font>"
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "主页"
+                                },
+                                "icon": {
+                                    "tag": "standard_icon",
+                                    "token": "home_outlined"
+                                },
+                                "behaviors": [
+                                    {
+                                        "type": "callback",
+                                        "value": {
+                                            "name": "home"
+                                        }
                                     }
-                                }
-                            ]
-                        }
-                    ],
-                    "margin": "16px 0px 0px 0px"
-                },
-                {
-                    "tag": "column_set",
-                    "flex_mode": "none",
-                    "background_style": "grey",
-                    "horizontal_spacing": "0px",
-                    "horizontal_align": "left",
-                    "columns": [
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "**${param1}**",
-                                    "text_align": "center",
-                                    "text_size": "normal"
-                                }
-                            ],
-                            "weight": 4
-                        },
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "**${param2}**",
-                                    "text_align": "center",
-                                    "text_size": "normal"
-                                }
-                            ],
-                            "weight": 4
-                        },
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "**${param3}**",
-                                    "text_align": "center",
-                                    "text_size": "normal"
-                                }
-                            ],
-                            "weight": 1
-                        },
-                        {
-                            "tag": "column",
-                            "width": "58px",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "**查看**",
-                                    "text_align": "center",
-                                    "text_size": "normal"
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
-                    "tag": "repeat",
-                    "variable": "object_list",
-                    "elements": [
-                        {
-                            "tag": "column_set",
-                            "flex_mode": "none",
-                            "background_style": "default",
-                            "horizontal_spacing": "0px",
-                            "horizontal_align": "left",
-                            "columns": [
-                                {
-                                    "tag": "column",
-                                    "width": "weighted",
-                                    "vertical_align": "top",
-                                    "vertical_spacing": "28px",
-                                    "background_style": "default",
-                                    "elements": [
-                                        {
-                                            "tag": "markdown",
-                                            "content": "<font color='blue'>${object_list.param1}</font>",
-                                            "text_align": "center",
-                                            "text_size": "notation"
-                                        }
-                                    ],
-                                    "weight": 4
+                                ]
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "个人"
                                 },
-                                {
-                                    "tag": "column",
-                                    "width": "weighted",
-                                    "vertical_align": "top",
-                                    "vertical_spacing": "28px",
-                                    "background_style": "default",
-                                    "elements": [
-                                        {
-                                            "tag": "markdown",
-                                            "content": "<font color=\"green\">${object_list.param2}</font>",
-                                            "text_align": "center",
-                                            "text_size": "notation"
-                                        }
-                                    ],
-                                    "weight": 4
+                                "icon": {
+                                    "tag": "standard_icon",
+                                    "token": "contacts_outlined"
                                 },
-                                {
-                                    "tag": "column",
-                                    "width": "weighted",
-                                    "vertical_align": "top",
-                                    "vertical_spacing": "28px",
-                                    "background_style": "default",
-                                    "elements": [
-                                        {
-                                            "tag": "markdown",
-                                            "content": "<font color='red'>${object_list.param3}</font>",
-                                            "text_align": "center",
-                                            "text_size": "notation"
+                                "behaviors": [
+                                    {
+                                        "type": "callback",
+                                        "value": {
+                                            "name": "self"
                                         }
-                                    ],
-                                    "weight": 1
+                                    }
+                                ]
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "返回"
                                 },
-                                {
-                                    "tag": "column",
-                                    "width": "58px",
-                                    "vertical_align": "top",
-                                    "vertical_spacing": "28px",
-                                    "background_style": "default",
-                                    "elements": [
-                                        {
-                                            "tag": "button",
-                                            "text": {
-                                                "tag": "plain_text",
-                                                "content": ""
-                                            },
-                                            "type": "primary",
-                                            "complex_interaction": true,
-                                            "width": "default",
-                                            "size": "tiny",
-                                            "icon": {
-                                                "tag": "standard_icon",
-                                                "token": "mosaic-smear_outlined"
-                                            },
-                                            "value": {
-                                                "name": "object.inspect",
-                                                "object_param_1": "${object_list.param1}",
-                                                "object_param_2": "${object_list.param2}",
-                                                "object_param_3": "${object_list.param3}",
-                                                "id": "${object_list.id}"
-                                            }
-                                        }
-                                    ]
+                                "complex_interaction": true,
+                                "icon": {
+                                    "tag": "standard_icon",
+                                    "token": "undo_outlined"
+                                },
+                                "value": {
+                                    "name": "back",
+                                    "id": "${father_id}"
                                 }
-                            ],
-                            "margin": "16px 0px 0px 0px"
-                        }
-                    ]
-                }
-            ]
-        },
-        "i18n_header": {}
+                            }
+                        ],
+                        "weight": 1
+                    }
+                ]
+            },
+            {
+                "tag": "column_set",
+                "background_style": "grey",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "**${param1}**",
+                                "text_align": "center"
+                            }
+                        ],
+                        "weight": 4
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "**${param2}**",
+                                "text_align": "center"
+                            }
+                        ],
+                        "weight": 4
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "**${param3}**",
+                                "text_align": "center"
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "**查看**",
+                                "text_align": "center"
+                            }
+                        ],
+                        "weight": 1
+                    }
+                ]
+            }
+        ],
+        "header": {}
     },
-    "apply":
+    "display_repeat_elements":{
+        "tag": "column_set",
+        "columns": [
+            {
+                "tag": "column",
+                "width": "weighted",
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": "<font color='blue'>${param1}</font>",
+                        "text_align": "center"
+                    }
+                ],
+                "weight": 4
+            },
+            {
+                "tag": "column",
+                "width": "weighted",
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": "<font color=\"green\">${param2}</font>",
+                        "text_align": "center"
+                    }
+                ],
+                "weight": 4
+            },
+            {
+                "tag": "column",
+                "width": "weighted",
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": "<font color='red'>${param3}</font>",
+                        "text_align": "center"
+                    }
+                ],
+                "weight": 1
+            },
+            {
+                "tag": "column",
+                "width": "weighted",
+                "elements": [
+                    {
+                        "tag": "button",
+                        "type": "primary",
+                        "icon": {
+                            "tag": "standard_icon",
+                            "token": "mosaic-smear_outlined"
+                        },
+                        "value": {
+                            "name": "object.inspect",
+                            "object_param_1": "${param1}",
+                            "object_param_2": "${param2}",
+                            "object_param_3": "${param3}",
+                            "id": "${id}"
+                        }
+                    }
+                ],
+                "weight": 1
+            }
+        ]
+    },
+    "info":
     {
         "config": {
             "update_multi": true

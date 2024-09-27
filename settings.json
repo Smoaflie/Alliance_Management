@@ -1,11 +1,12 @@
 {
     "mysql": {
-        "host": "mysql",
+        "host": "172.18.0.2",
         "user": "root",
         "password": "mysql",
         "db": "managementDatabase",
         "port": "3306"
     },
+    "group":"s",
     "sheet": {
         "token": "KlYDsOIVphwX8ItaJ90cf156n0s",
         "sheet_id_TOTAL": "3e1df5",

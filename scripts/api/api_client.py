@@ -95,6 +95,27 @@ class MessageApiClient(ApiClient):
             pass
         return resp.json()
     
+    def update_interactive(self,token,card):
+        self._authorize_tenant_access_token()
+        url = "{}/open-apis/interactive/v1/card/update".format(
+            self._lark_host
+        )
+        headers = {
+            "Authorization": "Bearer " + self.tenant_access_token,
+            "Content-Type": "application/json; charset=utf-8",
+        }
+
+        req_body = {
+            'token': token,
+            'card': card
+        }
+        resp = requests.delete(url=url, headers=headers, json=req_body)
+        try:
+            self._check_error_response(resp)
+        except LarkException as e:
+            pass
+        return resp.json()
+    
 class SpreadsheetApiClient(ApiClient):
     #电子表格api
     def fetchSheet(self, spreadsheet_token):
@@ -163,8 +184,8 @@ class ContactApiClient(ApiClient):
             'user_id_type': user_id_type,
             'department_id_type': department_id_type,
         }
-        resp = requests.get(url=url, headers=headers, params=params)
         try:
+            resp = requests.get(url=url, headers=headers, params=params)
             self._check_error_response(resp)
         except LarkException as e:
             pass
@@ -182,8 +203,8 @@ class ContactApiClient(ApiClient):
             'user_ids': user_ids,
             'user_id_type': user_id_type,
         }
-        resp = requests.get(url=url, headers=headers, params=params)
         try:
+            resp = requests.get(url=url, headers=headers, params=params)
             self._check_error_response(resp)
         except LarkException as e:
             pass

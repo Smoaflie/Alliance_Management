@@ -1,1 +1,32 @@
-"success"
+{
+    "schema": "2.0",
+    "header": {
+        "event_id": "35b10f3211dcdbae2a4316f74ac213ee",
+        "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
+        "create_time": "1727480575016022",
+        "event_type": "card.action.trigger",
+        "tenant_key": "15874fbe83c4d75f",
+        "app_id": "cli_a6687b8d5973100b"
+    },
+    "event": {
+        "operator": {
+            "tenant_key": "15874fbe83c4d75f",
+            "user_id": "f1549d18",
+            "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
+            "union_id": "on_39c045cdfce9993e11416da69de0d585"
+        },
+        "token": "c-24f83746a7dfcde3bd542f9dfe5d14bbb4fddd43",
+        "action": {
+            "value": {
+                "id": "1008001",
+                "name": "back"
+            },
+            "tag": "button"
+        },
+        "host": "im_message",
+        "context": {
+            "open_message_id": "om_70010aeadcb1846544f134ce7725c7c9",
+            "open_chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad"
+        }
+    }
+}

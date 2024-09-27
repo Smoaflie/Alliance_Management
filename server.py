@@ -14,12 +14,15 @@ from datetime import datetime
 import hashlib
 import re
 import time
+import copy
+import threading
+import sys
+
+app = Flask(__name__)
+processed_tokens = set()  # 用于存储已处理的 token
 
 # load env parameters form file named .env
 load_dotenv(find_dotenv())
-
-app = Flask(__name__)
-
 # load from env
 APP_ID = os.getenv("APP_ID")
 APP_SECRET = os.getenv("APP_SECRET")
@@ -35,6 +38,27 @@ cloud_api_client = CloudApiClient(APP_ID, APP_SECRET, LARK_HOST)
 approval_api_event = ApprovalApiClient(APP_ID, APP_SECRET, LARK_HOST)
 event_manager = EventManager()
 
+def server_init():
+    global sql,management,ITEM_SHEET_TOKEN, SHEET_ID_TOTAL, SHEET_ID_ITEM, APPROVAL_CODE,\
+          CARD_INFO_JSON, CARD_DISPLAY_JSON, CARD_DISPLAY_REPEAT_ELEMENTS_JSON
+    logging.basicConfig(level=logging.INFO)
+    with open('settings.json', 'r') as f:
+        settings = ujson.loads(f.read())
+        # 连接mysql服务器
+        sql = mysql.MySql(settings['mysql'])
+        ITEM_SHEET_TOKEN = settings.get('sheet').get('token')
+        SHEET_ID_TOTAL = settings.get('sheet').get('sheet_id_TOTAL')
+        SHEET_ID_ITEM = settings.get('sheet').get('sheet_id_ITEM')
+
+        management = ApiManagement(sql)
+        APPROVAL_CODE = settings.get('approval').get('approval_code')
+
+    with open('message_card.json', 'r') as f:
+        card_json = ujson.loads(f.read())
+        CARD_DISPLAY_JSON = card_json.get('display')
+        CARD_DISPLAY_REPEAT_ELEMENTS_JSON = card_json.get('display_repeat_elements')
+        CARD_INFO_JSON = card_json.get('info')
+server_init()
 
 '''
 event handler function
@@ -62,74 +86,58 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
     
     if event_key == 'custom_menu.inspect.items':
     #获取全部物品类型，配置映射
-        content = {
-            'type':'template',
-            'data':create_messageInteractive(object_id='0'),
-        }
+        content = create_messageInteractive(object_id='0')
         update_messageInteractive(user_id, content)
     elif event_key == 'custom_menu.test':
-        # 调试用
+        content = create_messageInteractive(object_id='2005')
+        update_messageInteractive(user_id, content)
+        DEBUG_OUT(data=content)
         pass
     return jsonify()
 
 @event_manager.register("card.action.trigger")
 def card_action_event_handler(req_data: CardActionEvent):
     event = req_data.event
+    token = event.token
     user_id = event.operator.user_id
     value = event.action.value
-    toast=None
-    data=None
     alife_card_id = management.is_alive_card(user_id)
     current_card_id = event.context.open_message_id
+    toast = None
     if alife_card_id and alife_card_id!=current_card_id:
         message_api_client.recall(current_card_id)
         toast = {
                 'type':'error',
                 'content':'Error: 该消息卡片已过期，请使用新卡片'
             }
-        
-    elif value.name == 'home':
-        data = create_messageInteractive(object_id='0')
-    elif value.name == 'self':
-        data = create_messageInteractive(object_id='-1', user_id=user_id)
-    elif value.name == 'object.inspect':
-        data = create_messageInteractive(object_id=value.id)
-    elif value.name == 'back':
-        data = create_messageInteractive(father_id=value.id)
-    elif value.name == 'object.apply':
-        oid = value.id
-        if management.apply_item(user_id=user_id, oid=int(oid)) == 'success':
-            item_info = management.get_item(oid)
-            
-            form=[
-                {'id':'do','type':'textarea','value':'申请'},
-                {'id':'date','type':'date',"value": f"{datetime.fromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S+08:00")}"},
-                {'id':'form','type':'fieldList', 'value':[[ 
-                    {'id':'name','type':'input','value':f'{item_info['name']}'},
-                    {'id':'num','type':'number','value':'1'},
-                    {'id':'oid','type':'number','value':oid}
-                ]]},
-            ]
+    else:
+        if value.name == 'object.inspect':
+            if value.id == '0':#归还
+                toast = {
+                    'type':'success',
+                    'content':'success: 已归还'
+                }
+        elif value.name == 'object.apply':
+            oid = value.id
+            if management.apply_item(user_id=user_id, oid=int(oid)) == 'success':
+                toast = {
+                    'type':'success',
+                    'content':'success: 已发送申请'
+                }
+            else:
+                toast = {
+                    'type':'error',
+                    'content':'Error: 物品不可用'
+                }
 
-            result = approval_api_event.create(approval_code=APPROVAL_CODE, user_id=user_id,\
-                                    form=ujson.dumps(form))
-            toast = {
-                'type':'success',
-                'content':'success: 已发送申请'
-            }
-        else:
-            toast = {
-                'type':'error',
-                'content':'Error: 物品不可用'
-            }
-        data = create_messageInteractive(object_id=oid)
-        
+        thread = threading.Thread(target=card_action_event_task,args=(token,event,user_id,value))
+        thread.start()
+
     request_data = {
         'toast':toast if toast else {},
         "card":{
-            "type":"template",
-            "data": data
-        } if data else {}
+            "type":"template"
+        }
     } 
     return jsonify(request_data)
 
@@ -168,8 +176,12 @@ Flask app function
 @app.route("/", methods=["POST"])
 def callback_event_handler():    
     # 飞书事件回调
-    # DEBUG_OUT(data=request.json)
-    logging.info("fetch request.")
+    token = request.json.get('header').get('token')
+    if token in processed_tokens: #请求已处理，跳过
+        logging.info("This request has been handled.")
+        return jsonify()
+    
+    DEBUG_OUT(data=request.json)
     event_handler, event = event_manager.get_handler_with_event(VERIFICATION_TOKEN, ENCRYPT_KEY)
     
     return event_handler(event)
@@ -178,15 +190,8 @@ def callback_event_handler():
 def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入members表中
     try:
         user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
-        items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
-        user_list = list()
-        for item in items:
-            user_list.append({
-                'name':item['name'],
-                'user_id':item['user_id']
-            })
         #校验md5值，检测是否有变化
-        list_string = ''.join(map(str, user_list))
+        list_string = ''.join(map(str, user_ids))
         MD5remote = hashlib.md5()
         MD5remote.update(list_string.encode('utf-8'))
         MD5remote = MD5remote.hexdigest()
@@ -200,6 +205,13 @@ def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入
             MD5local = MD5local[1]
 
         if MD5local != MD5remote:
+            items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
+            user_list = list()
+            for item in items:
+                user_list.append({
+                    'name':item['name'],
+                    'user_id':item['user_id']
+                })
             management.add_member_batch(user_list)
             sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
             sql.commit()
@@ -275,28 +287,76 @@ def is_valid(sstr, errors):
 
 def update_messageInteractive(user_id, content):
     # 如果之前有过消息卡片，先撤回再发送新卡片
-    alive_card_id = management.is_alive_card(user_id)
-    if alive_card_id:
-        message_api_client.recall(alive_card_id)
+    try:
+        alive_card_id = management.is_alive_card(user_id)
+        if alive_card_id:
+            message_api_client.recall(alive_card_id)
+            result = message_api_client.send_interactive_with_user_id(user_id, content)
 
-    result = message_api_client.send_interactive_with_user_id(user_id, content)
+            message_id = result.get('data').get('message_id')
+            create_time = result.get('data').get('create_time')
+            management.update_card(user_id,message_id,create_time)
+    except Exception as e:
+        logging.error(f"{e}")
 
-    message_id = result.get('data').get('message_id')
-    create_time = result.get('data').get('create_time')
-    management.update_card(user_id,message_id,create_time)
-    
+def replace_placeholders(data, values):
+    if isinstance(data, dict):
+        for key, value in data.items():
+            data[key] = replace_placeholders(value, values)
+    elif isinstance(data, list):
+        for index in range(len(data)):
+            data[index] = replace_placeholders(data[index], values)
+    elif isinstance(data, str):
+        for key, value in values.items():
+            data = data.replace(f"${{{key}}}", str(value))
+    return data
+
+def card_action_event_task(token,event,user_id,value):
+    data = None
+    if value.name == 'home':
+        data = create_messageInteractive(object_id='0')
+    elif value.name == 'self':
+        data = create_messageInteractive(object_id='-1', user_id=user_id)
+    elif value.name == 'object.inspect':
+        if value.id == '0':#归还
+            management.return_item(user_id,value.object_param_1)
+        else:#查看
+            data = create_messageInteractive(object_id=value.id)
+    elif value.name == 'back':
+        data = create_messageInteractive(father_id=value.id)
+    elif value.name == 'object.apply':
+        oid = value.id
+        if management.apply_item(user_id=user_id, oid=int(oid)) == 'success':
+            item_info = management.get_item(oid)
+            form=[
+                {'id':'do','type':'textarea','value':'申请'},
+                {'id':'date','type':'date',"value": f"{datetime.fromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S+08:00")}"},
+                {'id':'form','type':'fieldList', 'value':[[ 
+                    {'id':'name','type':'input','value':f'{item_info['name']}'},
+                    {'id':'num','type':'number','value':'1'},
+                    {'id':'oid','type':'number','value':oid}
+                ]]},
+            ]
+
+            approval_api_event.create(approval_code=APPROVAL_CODE, user_id=user_id,\
+                                    form=ujson.dumps(form))
+        else:
+            pass
+        data = create_messageInteractive(object_id=oid)
+    message_api_client.update_interactive(token,data)
+
 def create_messageInteractive(object_id=None, father_id=None, user_id=None):
     title_map = {
-        '1':{'template_id':DISPLAY_CARD_TOKEN, 'table':'item_category', 'title':"物资类型", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':""},
-        '2':{'template_id':DISPLAY_CARD_TOKEN, 'table':'item_list', 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':""},
-        '3':{'template_id':DISPLAY_CARD_TOKEN, 'table':'item_info', 'title':"物资仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态', 'param4':""},
-        '4':{'template_id':APPLY_CARD_TOKEN, 'table':'item_info', 'title':"", 'param1':'', 'param2':'', 'param3':'', 'param4':""},
-        '0':{'template_id':DISPLAY_CARD_TOKEN, 'table':'item_info', 'title':"个人仓库", 'param1':'ID', 'param2':'名称', 'param3':'备注', 'param4':""},
+        '1':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_category', 'title':"物资类型", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':"查看"},
+        '2':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_list', 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量', 'param4':"查看"},
+        '3':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_info', 'title':"物资仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态', 'param4':"查看"},
+        '4':{'CARD_JSON':CARD_INFO_JSON, 'table':'item_info', 'title':"", 'param1':'', 'param2':'', 'param3':'', 'param4':""},
+        '0':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_info', 'title':"个人仓库", 'param1':'ID', 'param2':'名称', 'param3':'备注', 'param4':"归还"},
     }
     if object_id:
         object_id = int(object_id)
         _father_id = str(object_id)
-        title_id = '0' if object_id==-1 else ('1' if object_id==0 else ('2' if object_id < 1000 else ('3' if object_id < 1000000 else '4') ) )
+        title_id = '0' if object_id=='-1' else ('1' if object_id==0 else ('2' if object_id < 1000 else ('3' if object_id < 1000000 else '4') ) )
         _id = object_id
     elif father_id:
         father_id = int(father_id)
@@ -308,19 +368,19 @@ def create_messageInteractive(object_id=None, father_id=None, user_id=None):
     
     if title_id == '0':
         _list = management.get_member_items(user_id)
-        object_list =[{'param1': id_, 'param2': name_, 'param3': do_, 'id':id_} 
+        object_list =[{'param1': id_, 'param2': name_, 'param3': do_, 'id':'0'} 
                     for id_, name_, do_ in zip(_list['oid'], _list['name'], _list['do'])] if _list else None
     elif title_id == '1':
         _list = management.get_category()
-        object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_), 'id':id_} 
+        object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_), 'id':str(id_)} 
                     for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
     elif title_id == '2':
         _list = management.get_list(father=_id)
-        object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_), 'id':id_} 
+        object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_), 'id':str(id_)} 
                     for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
     elif title_id == '3':
         _list = management.get_items(father=_id)
-        object_list =[{'param1': id_, 'param2': name_, 'param3': useable_, 'id':id_} 
+        object_list =[{'param1': id_, 'param2': name_, 'param3': useable_, 'id':str(id_)} 
                     for id_, name_, useable_ in zip(_list['id'], _list['name'], _list['useable'])] if _list else None
     elif title_id == '4':
         object_list = []
@@ -331,20 +391,23 @@ def create_messageInteractive(object_id=None, father_id=None, user_id=None):
         title_map[title_id]['param3'] = _item['wis']
         title_map[title_id]['param4'] = _item['do']
 
-    data = {
-        'template_id':title_map[title_id]['template_id'],
-        'template_variable':{
-            'title': title_map[title_id]['title'],
-            'title_id': title_id,
-            'object_list':object_list,
-            'param1': title_map[title_id]['param1'],
-            'param2': title_map[title_id]['param2'],
-            'param3': title_map[title_id]['param3'],
-            'param4': title_map[title_id]['param4'],
-            'father_id':_father_id
-        }
+    values = {
+        'title': title_map[title_id]['title'],
+        'title_id': title_id,
+        'param1': title_map[title_id]['param1'],
+        'param2': title_map[title_id]['param2'],
+        'param3': title_map[title_id]['param3'],
+        'param4': title_map[title_id]['param4'],
+        'father_id':str(_father_id),
     }
-    return data
+    json_data = copy.deepcopy(title_map[title_id]['CARD_JSON'])
+    result_data = replace_placeholders(json_data, values)
+
+    if object_list:
+        for obj in object_list:
+            repeat_elements = copy.deepcopy(CARD_DISPLAY_REPEAT_ELEMENTS_JSON)
+            result_data['elements'].append(replace_placeholders(repeat_elements, obj))
+    return result_data
 
 def process_user_message(user_id, message, sender):
     reply_text = ""
@@ -539,28 +602,6 @@ def command_return_item(reply_map, message, sender, object, params):
 
     return result
 
-def command_get_help(reply_map, message, sender, object, params):
-    margin = 10
-    return f'''\
-    机器人命令指南：
-    格式：/command [options] [param1=value] [param2=value] ...
-    当前已实现命令commands，标注*号的需要拥有管理权限:
-    {'help':<{margin}} \t查看《机器人命令指南》
-    {'*add {{item|list|category}} {{params}}':<{margin}} \t往数据库中插入数据,如父项不存在会自动创建
-        {'':<{margin}} item\t 具体物品。params:{{'name'|'name_id'}},['category_name','category_id','num']),
-        {'':<{margin}} list\t 物品列表。params:'name',{{'category_name'|'category_id}}),
-        {'':<{margin}} category\t 物品类型。params:'category_name'
-    {'*del {{item|list|category}} {{params}}':<{margin}} \t删除数据库中某条数据,如子项中存在数据则无法删除
-        {'':<{margin}} item\t 具体物品。params:'id',
-        {'':<{margin}} list\t 物品列表。params:{{'name'|'id'}},
-        {'':<{margin}} category\t 物品类型。params:{{'name'|'id'}}
-    {'op {{@user_name}}':<{margin}} \t给予管理员权限
-    {'deop {{@user_name}}':<{margin}} \t取消管理员权限
-    {'lsop {{@user_name}}':<{margin}} \t列出管理员列表
-    {'search {{id}}':<{margin}} \t搜索id对应的项
-    {'return {{id}}':<{margin}} \t归还id对应的物品,只能还自己的，管理员可以帮忙归还
-    '''
-
 def command_save(reply_map, message, sender, object, params):
     try:
         sheets = spreadsheet_api_client.fetchSheet(ITEM_SHEET_TOKEN).get('data').get('sheets')
@@ -592,19 +633,37 @@ def command_save(reply_map, message, sender, object, params):
     except Exception as e:
         return f"失败 {e}"
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    # 连接mysql服务器
-    with open('settings.json', 'r') as f:
-        settings = ujson.loads(f.read())
-        sql = mysql.MySql(settings['mysql'])
-        ITEM_SHEET_TOKEN = settings.get('sheet').get('token')
-        SHEET_ID_TOTAL = settings.get('sheet').get('sheet_id_TOTAL')
-        SHEET_ID_ITEM = settings.get('sheet').get('sheet_id_ITEM')
+def command_get_help(reply_map, message, sender, object, params):
+    margin = 10
+    return f'''\
+    机器人命令指南：
+    格式：/command [options] [param1=value] [param2=value] ...
+    当前已实现命令commands，标注*号的需要拥有管理权限:
+    {'help':<{margin}} \t查看《机器人命令指南》
+    {'*add {{item|list|category}} {{params}}':<{margin}} \t往数据库中插入数据,如父项不存在会自动创建
+        {'':<{margin}} item\t 具体物品。params:{{'name'|'name_id'}},['category_name','category_id','num']),
+        {'':<{margin}} list\t 物品列表。params:'name',{{'category_name'|'category_id}}),
+        {'':<{margin}} category\t 物品类型。params:'category_name'
+    {'*del {{item|list|category}} {{params}}':<{margin}} \t删除数据库中某条数据,如子项中存在数据则无法删除
+        {'':<{margin}} item\t 具体物品。params:'id',
+        {'':<{margin}} list\t 物品列表。params:{{'name'|'id'}},
+        {'':<{margin}} category\t 物品类型。params:{{'name'|'id'}}
+    {'op {{@user_name}}':<{margin}} \t给予管理员权限
+    {'deop {{@user_name}}':<{margin}} \t取消管理员权限
+    {'lsop {{@user_name}}':<{margin}} \t列出管理员列表
+    {'search {{id}}':<{margin}} \t搜索id对应的项
+    {'return {{id}}':<{margin}} \t归还id对应的物品,只能还自己的，管理员可以帮忙归还
+    {'save':<{margin}} \t(仅管理员)同步物资情况到指定的电子表格
+    '''
 
-        management = ApiManagement(sql)
-        APPROVAL_CODE = settings.get('approval').get('approval_code')
-        DISPLAY_CARD_TOKEN = settings.get('message_card').get('display_card_token')
-        APPLY_CARD_TOKEN = settings.get('message_card').get('apply_card_token')
+def restart_app(interval):
+    time.sleep(interval)
+    logging.info("restart")
+    os.execv(sys.executable, ['python3'] + sys.argv)  # 重启应用
+        
+if __name__ == "__main__":
+    interval = 10800  # 每3小时重启一次
+    threading.Thread(target=restart_app, args=(interval,), daemon=True).start()
+
     # 启动服务
     app.run(host="0.0.0.0", port=3000, debug=True)
