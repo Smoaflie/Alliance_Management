@@ -70,7 +70,7 @@ class ApiManagement(object):
             for it in d:
                 if it not in info:
                     info.append(it)
-        return self.return_itemTable_by_info(info)
+        return self.return_itemTable_by_info(info) if info else None
 
     def get_item(self, oid):
         info = self.sql.fetchone('item_info', 'id', int(oid))
@@ -78,7 +78,7 @@ class ApiManagement(object):
             father = self.sql.fetchone('item_list', 'id', info[1])
             return self.return_itemTable_by_info(info, father[2])
         else:
-            raise Exception(f"无法找到目标物品 oid:{str(oid)}")
+            raise Exception(f"无法找到目标物品 oid:{str(oid)}") if info else None
 
     def get_items(self, father=None, father_name=None):
         if not (father or father_name):
@@ -91,7 +91,7 @@ class ApiManagement(object):
         item_name = father[2]
 
         info = self.sql.fetchall('item_info', 'father', int(father_id))
-        return self.return_itemTable_by_info(info, name=item_name)
+        return self.return_itemTable_by_info(info, name=item_name)  if info else None
     
     def get_member_items(self, user_id=None, user_name=None):
         if not user_name:
@@ -122,7 +122,6 @@ class ApiManagement(object):
             member_items_out['oid'].append(oid)
             member_items_out['name'].append(name)
             member_items_out['do'].append(do)
-        logging.info(member_items_out)
         
         return member_items_out
 
@@ -134,12 +133,10 @@ class ApiManagement(object):
                 'name': user_name
             }
             self.sql.insert('members', ins)
-            self.sql.commit()
     def add_member_batch(self, user_list):
         for user in user_list:
             if not self.sql.fetchone('members', 'user_id', user['user_id']):
                 self.sql.insert('members', user)
-        self.sql.commit()
 
     def get_member(self, user_id):
         member = self.sql.fetchone('members', 'user_id', user_id)
@@ -166,11 +163,9 @@ class ApiManagement(object):
         
     def set_member_root(self, user_id):
         self.sql.update('members', ('user_id',user_id), {'root':1})
-        self.sql.commit()
 
     def set_member_unroot(self, user_id):
         self.sql.update('members', ('user_id',user_id), {'root':0})
-        self.sql.commit()
 
     def add_item(self, name_id=None, name=None,  \
                   num=1, num_broken=None,\
@@ -211,7 +206,6 @@ class ApiManagement(object):
         if num_broken:
             for i in range(num_broken):
                 self.sql.update('item_info', ('id',i+new_id), {'useable':3})
-        self.sql.commit()
 
     def add_items_until_limit(self, name_id=None, num=1, name=None, num_broken=None, category_name=None, category_id=None):
         if name_id:
@@ -261,7 +255,6 @@ class ApiManagement(object):
             'father':category_id,
             'name':name
         })
-        self.sql.commit()
         return new_id #item_info`s father
 
     def add_category(self, category_name=None, params=None):
@@ -280,7 +273,6 @@ class ApiManagement(object):
             'id':new_id,
             'name':category_name
         })
-        self.sql.commit()
         return new_id
 
     #TODO:删除父节点时同时删除所有子节点
@@ -289,7 +281,6 @@ class ApiManagement(object):
             id = params.get('id')
 
         self.sql.delete('item_info','id',id)
-        self.sql.commit()
 
     def del_list(self,name=None,id=None,params=None):
         if params:
@@ -302,7 +293,6 @@ class ApiManagement(object):
             self.sql.delete('item_list','name',name)
         elif id:
             self.sql.delete('item_list','id',id)
-        self.sql.commit()
 
     def del_category(self,name=None,id=None, params=None):
         if params:
@@ -315,7 +305,6 @@ class ApiManagement(object):
             self.sql.delete('item_category','name',name)
         elif id:
             self.sql.delete('item_category','id',id)
-        self.sql.commit()
 
     def apply_item(self, user_id, oid, do=None):
         item_info = self.get_item(oid)
@@ -332,7 +321,6 @@ class ApiManagement(object):
         self.sql.update('item_info', ('id',oid), 
                         {'useable':4,
                         'do':do})
-        self.sql.commit()
         return 'success'
     
     def set_item_state(self, operater_user_id=None, operation=None,\
@@ -346,7 +334,6 @@ class ApiManagement(object):
                         {'useable':useable,
                         'wis':wis,
                         'do':do})
-        self.sql.commit()
 
     def return_item(self, user_id, oid):
         try:
@@ -366,11 +353,15 @@ class ApiManagement(object):
                                 oid=oid,useable=1,wis='仓库',do='null')
             return f'你{"帮忙" if member['root'] else ""}归还了物品 {item_info['name']} oid:{oid}'
 
-    def update_card(self, user_id, message_id, create_time): #更新用户和对应的信息卡片信息
-        restule = self.sql.update('members',('user_id',user_id),{   \
-            'card_message_id':message_id,'card_message_create_time':create_time})
-        self.sql.commit()
-        return restule
+    def update_card(self, user_id, message_id=None, create_time=None): #更新用户和对应的信息卡片信息
+        if message_id and create_time:
+            result = self.sql.update('members',('user_id',user_id),{   \
+                'card_message_id':message_id,'card_message_create_time':create_time})
+        else:
+            result = self.sql.update('members',('user_id',user_id),{   \
+                'card_message_id':None,'card_message_create_time':None})
+        
+        return result
         
     def is_alive_card(self, user_id):
         result = self.sql.fetchone('members','user_id',user_id)

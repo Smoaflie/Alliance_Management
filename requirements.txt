@@ -5,3 +5,4 @@ pycryptodome
 Werkzeug<3
 pymysql
 ujson
+DBUtils

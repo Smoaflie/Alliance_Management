@@ -123,6 +123,13 @@ if __name__ == '__main__':
           `card_message_id` text,
           `card_message_create_time` text
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
+        #  存储已处理的飞书请求token  
+            # `event_id` 事件id
+            # `create_time` 创建时间  
+        'requests': '''CREATE TABLE `requests` (
+          `event_id` text NOT NULL,
+          `create_time` text NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
     }
     # 逐个检查并创建表
     for table_name, create_sql in tables.items():

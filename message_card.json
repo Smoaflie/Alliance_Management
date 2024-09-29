@@ -2,7 +2,8 @@
     "display":
     {
         "config": {
-            "update_multi": true
+            "update_multi": true,
+            "width_mode": "compact"
         },
         "elements": [
             {
@@ -98,274 +99,61 @@
                 ]
             },
             {
-                "tag": "column_set",
-                "background_style": "grey",
-                "columns": [
-                    {
-                        "tag": "column",
-                        "width": "weighted",
-                        "elements": [
-                            {
-                                "tag": "markdown",
-                                "content": "**${param1}**",
-                                "text_align": "center"
-                            }
-                        ],
-                        "weight": 4
-                    },
-                    {
-                        "tag": "column",
-                        "width": "weighted",
-                        "elements": [
-                            {
-                                "tag": "markdown",
-                                "content": "**${param2}**",
-                                "text_align": "center"
-                            }
-                        ],
-                        "weight": 4
-                    },
-                    {
-                        "tag": "column",
-                        "width": "weighted",
-                        "elements": [
-                            {
-                                "tag": "markdown",
-                                "content": "**${param3}**",
-                                "text_align": "center"
-                            }
-                        ],
-                        "weight": 1
-                    },
-                    {
-                        "tag": "column",
-                        "width": "weighted",
-                        "elements": [
-                            {
-                                "tag": "markdown",
-                                "content": "**查看**",
-                                "text_align": "center"
-                            }
-                        ],
-                        "weight": 1
-                    }
-                ]
+                "tag": "markdown",
+                "content":"${title_text}"
+            },
+            {
+                "tag": "hr"
             }
         ],
         "header": {}
     },
     "display_repeat_elements":{
-        "tag": "column_set",
-        "columns": [
-            {
-                "tag": "column",
-                "width": "weighted",
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": "<font color='blue'>${param1}</font>",
-                        "text_align": "center"
-                    }
-                ],
-                "weight": 4
-            },
-            {
-                "tag": "column",
-                "width": "weighted",
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": "<font color=\"green\">${param2}</font>",
-                        "text_align": "center"
-                    }
-                ],
-                "weight": 4
-            },
-            {
-                "tag": "column",
-                "width": "weighted",
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": "<font color='red'>${param3}</font>",
-                        "text_align": "center"
-                    }
-                ],
-                "weight": 1
-            },
-            {
-                "tag": "column",
-                "width": "weighted",
-                "elements": [
-                    {
-                        "tag": "button",
-                        "type": "primary",
-                        "icon": {
-                            "tag": "standard_icon",
-                            "token": "mosaic-smear_outlined"
-                        },
-                        "value": {
-                            "name": "object.inspect",
-                            "object_param_1": "${param1}",
-                            "object_param_2": "${param2}",
-                            "object_param_3": "${param3}",
-                            "id": "${id}"
-                        }
-                    }
-                ],
-                "weight": 1
-            }
-        ]
-    },
-    "info":
-    {
-        "config": {
-            "update_multi": true
+        "tag": "checker",  
+        "checked": false,  
+        "text": {  
+          "tag": "lark_md", 
+          "text_size":"normal",
+          "text_color":"green",
+          "content": "${checker_text}"
         },
-        "i18n_elements": {
-            "zh_cn": [
-                {
-                    "tag": "column_set",
-                    "flex_mode": "none",
-                    "background_style": "default",
-                    "horizontal_spacing": "8px",
-                    "horizontal_align": "left",
-                    "columns": [
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "**🏆状态：**\n${param2}",
-                                    "text_align": "left",
-                                    "text_size": "normal"
-                                }
-                            ],
-                            "weight": 1
-                        },
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "**🔢编号：**\n${param1}",
-                                    "text_align": "left",
-                                    "text_size": "normal"
-                                }
-                            ],
-                            "weight": 1
-                        }
-                    ],
-                    "margin": "16px 0px 0px 0px"
-                },
-                {
-                    "tag": "column_set",
-                    "flex_mode": "stretch",
-                    "background_style": "default",
-                    "horizontal_spacing": "8px",
-                    "horizontal_align": "left",
-                    "columns": [
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "**🗳当前位置：**\n${param3}",
-                                    "text_align": "left",
-                                    "text_size": "normal"
-                                }
-                            ],
-                            "weight": 1
-                        },
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "vertical_align": "top",
-                            "vertical_spacing": "8px",
-                            "background_style": "default",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "**📝备注：**\n${param4}",
-                                    "text_align": "left",
-                                    "text_size": "normal"
-                                }
-                            ],
-                            "weight": 1
-                        }
-                    ],
-                    "margin": "16px 0px 0px 0px"
-                },
-                {
-                    "tag": "action",
-                    "layout": "bisected",
-                    "actions": [
-                        {
-                            "tag": "button",
-                            "text": {
-                                "tag": "plain_text",
-                                "content": "申领"
-                            },
-                            "type": "primary",
-                            "complex_interaction": true,
-                            "width": "100px",
-                            "size": "small",
-                            "icon": {
-                                "tag": "standard_icon",
-                                "token": "arrow-up_outlined"
-                            },
-                            "value": {
-                                "name": "object.apply",
-                                "id": "${param1}"
-                            }
-                        },
-                        {
-                            "tag": "button",
-                            "text": {
-                                "tag": "plain_text",
-                                "content": "返回"
-                            },
-                            "type": "primary",
-                            "complex_interaction": true,
-                            "width": "100px",
-                            "size": "small",
-                            "icon": {
-                                "tag": "standard_icon",
-                                "token": "left_outlined"
-                            },
-                            "value": {
-                                "name": "back",
-                                "id": "${father_id}"
-                            }
-                        }
-                    ]
+        "disabled":true,
+        "button_area": {  
+          "buttons": [  
+            {
+              "tag": "button",  
+              "type": "primary_text",
+              "icon": {   
+                "tag": "standard_icon",
+                "token": "mosaic-smear_outlined"
+              },
+              "value": {
+                    "name": "object.inspect",
+                    "object_param_1": "${param1}",
+                    "object_param_2": "${param2}",
+                    "object_param_3": "${param3}",
+                    "id": "${param1}"
                 }
-            ]
-        },
-        "i18n_header": {
-            "zh_cn": {
-                "title": {
-                    "tag": "plain_text",
-                    "content": "${title}"
-                },
-                "subtitle": {
-                    "tag": "plain_text",
-                    "content": ""
-                },
-                "template": "green"
             }
+          ]
+        },
+        "behaviors": [  
+          {
+            "type": "callback", 
+            "value": {
+                "value":"text"
+            }
+          }
+        ]
+    },    
+    "button_confirm":{
+        "title": {
+            "tag": "plain_text",
+            "content": "Confirm"
+        },
+        "text": {
+            "tag": "plain_text",
+            "content": "你是否要 ${action} ${param2} oid:${param1}\n备注：${do}"
         }
     }
 }

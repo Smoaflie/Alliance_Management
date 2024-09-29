@@ -1,94 +1,74 @@
 import pymysql
-import time
-from pymysql import OperationalError
 import logging
+from functools import wraps
+from dbutils.pooled_db import PooledDB
 
 class MySqlError(Exception):
     def __init__(self, arg):
         self.args = arg
 
+def log_errors(func): #使用装饰器来记录异常
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            logging.error(f"Error in {func.__name__}: {str(e)}")
+            return None
+    return wrapper
 
 class MySql:
     def __init__(self, Info):
         self.Info = Info
-        self.connect()
-        self.__cursor = self.__db.cursor()
+        # 创建连接池
+        self.pool = PooledDB(
+            creator=pymysql,  # 使用 PyMySQL 连接
+            maxconnections=5,     # 连接池最大连接数
+            mincached=2,          # 初始化时，连接池中至少创建的空闲连接数
+            maxcached=5,          # 连接池中最多空闲连接数
+            maxshared=3,          # 连接池中最多共享连接数
+            blocking=True,        # 连接池中如果没有可用连接后是否阻塞
+            host=self.Info['host'], 
+            user=self.Info['user'], 
+            passwd=self.Info['password'], 
+            db=self.Info['db'],
+            port=int(self.Info['port']), 
+            charset='utf8'
+        )
 
-    def connect(self):
-        attempt = 0
-        retries = 10
-        # 尝试连接MySQL，失败时自动重试，直到最大重试次数。
-        while attempt < retries:
-            try:
-                self.__db = pymysql.connect(host=self.Info['host'], user=self.Info['user'], passwd=self.Info['password'], db=self.Info['db'],
-                                    port=int(self.Info['port']), charset='utf8')
-                print('连接mysql数据库成功')
-                break
-            except pymysql.MySQLError as e:
-                print(f'连接mysql数据库失败，尝试重连 {attempt}/{retries}，错误原因：{e}')
-                attempt += 1
-                time.sleep(1)
-        # 如果达到最大尝试次数后仍未成功连接，则结束程序
-        if attempt == retries:
-            logging.error("无法连接到MySQL，超过最大重试次数。")
-
-    def refresh(self):
-        try:
-            self.__db.ping()
-        except OperationalError:
-            print('SQL error, trying to reconnect')
-            if self.__cursor is not None:
-                self.__cursor.close()
-            if self.__db is not None:
-                self.__db.close()
-            self.connect()
-            self.__cursor = self.__db.cursor()
-        except Exception as e:
-            print(f"Unexpected error during refresh: {e}")
-
+    @log_errors
     def fetchone(self, table, key, value):
-        self.refresh()
-        sql = f"SELECT SQL_NO_CACHE * from {table} WHERE {key} = %s"
-        try:
-            self.__cursor.execute(sql,(value,))
-            result = self.__cursor.fetchone()
-            return result
-        except Exception as e:
-            logging.error(f"Error occurred while fetching data: {e}")
-
-    def fetchall(self, table, key, value):
-        self.refresh()
-
-        sql = f"SELECT SQL_NO_CACHE * from {table} WHERE {key} = %s"
-        try:
-            self.__cursor.execute(sql,(value,))
-            result = self.__cursor.fetchall()
-            return result
-        except Exception as e:
-            logging.error(f"Error occurred while fetching data: {e}")
-
-    def gettable(self):
-        self.refresh()
-        sql = "SHOW TABLES"
-        try:
-            self.__cursor.execute(sql)
-            result = self.__cursor.fetchall()
-            return result
-        except Exception as e:
-            logging.error(f"Error occurred while show tables: {str(e)}")
+        sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} = %s"
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql,(value,))
+                return cursor.fetchone()
         
-    def getall(self, table):
-        self.refresh()
-        sql = "SELECT * from %s" % table
-        try:
-            self.__cursor.execute(sql)
-            result = self.__cursor.fetchall()
-            return result
-        except Exception as e:
-            logging.error(f"Error occurred while fetching data: {str(e)}")
+    @log_errors
+    def fetchall(self, table, key, value):
+        sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} = %s"
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql,(value,))
+                return cursor.fetchall()
 
+    @log_errors
+    def gettable(self):
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SHOW TABLES")
+                return cursor.fetchall()
+        
+    @log_errors
+    def getall(self, table):
+        sql = "SELECT * from %s" % table
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                return cursor.fetchall()
+
+    @log_errors
     def insert(self, table, data):
-        self.refresh()
         keys = data.keys()
         values = tuple(data.values())
 
@@ -96,8 +76,12 @@ class MySql:
         ValueTable = ', '.join(['%s'] * len(keys))
 
         sql = f"INSERT INTO {table} ({KeyTable}) VALUES ({ValueTable})"
-        self.__cursor.execute(sql,values)
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql,values)
+                conn.commit()
 
+    @log_errors
     def update(self, table, key, updates):
         """
         更新表中的多个字段。
@@ -106,7 +90,6 @@ class MySql:
         :param key: 用于查找记录的键，格式为 (key_column, key_value)
         :param updates: 更新字段及其新值的字典，例如 {'column1': 'new_value1', 'column2': 'new_value2'}
         """
-        self.refresh()
         # 处理更新的字段，使用占位符
         set_clause = ', '.join([f"{col} = %s" for col in updates.keys()])
         # 处理 WHERE 子句
@@ -116,33 +99,31 @@ class MySql:
         
         # 将更新字段的值和 key_val 一起作为参数传递给 execute
         values = list(updates.values()) + [key_val]
-        self.__cursor.execute(sql, values)
-
-
-    def delete(self, table, key, value):
-        self.refresh()
-        sql = f"DELETE FROM {table} WHERE {key} = %s"
-        self.__cursor.execute(sql,(value,))
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, values)
+                conn.commit()
         
-
-    def commit(self):
-        try:
-            self.__db.commit()
-        except:
-            self.__db.rollback()
-            self.__db.commit()
-            raise MySqlError("Error happen when delete date !")
-
+    @log_errors
+    def delete(self, table, key=None, value=None):
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                if key and value:
+                    sql = f"DELETE FROM {table} WHERE {key} = %s"
+                    cursor.execute(sql,(value,))
+                else:
+                    sql = f"DELETE FROM {table}"
+                    cursor.execute(sql)
+                conn.commit()
+    
+    @log_errors
     def getchecksum(self, table):
-        self.refresh()
         sql = f"CHECKSUM TABLE {table}"
-        try:
-            self.__cursor.execute(sql)
-            result = self.__cursor.fetchall()
-            return result
-        except Exception as e:
-            logging.error(f"Error occurred while get checksum: {str(e)}")
-
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                return cursor.fetchall()
+        
     def __del__(self):
-        self.__cursor.close()
-        self.__db.close()
+        if self.pool:
+            self.pool.close()  # 清理连接池

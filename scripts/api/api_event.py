@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.8
 
-import json
+import ujson
 import abc
 import hashlib
 import typing as t
@@ -98,7 +98,7 @@ class EventManager(object):
     @staticmethod
     # 监听飞书事件
     def get_handler_with_event(token, encrypt_key):
-        dict_data = json.loads(request.data)
+        dict_data = ujson.loads(request.data)
         dict_data = EventManager._decrypt_data(encrypt_key, dict_data)
         callback_type = dict_data.get("type")
         # only verification data has callback_type, else is event
@@ -129,7 +129,7 @@ class EventManager(object):
             raise Exception("ENCRYPT_KEY is necessary")
         cipher = AESCipher(encrypt_key)
 
-        return json.loads(cipher.decrypt_string(encrypt_data))
+        return ujson.loads(cipher.decrypt_string(encrypt_data))
 
 
 class InvalidEventException(Exception):

@@ -2,7 +2,6 @@
 import os
 import logging
 import requests
-import json
 import ujson
 
 APP_ID = os.getenv("APP_ID")
@@ -112,9 +111,9 @@ class MessageApiClient(ApiClient):
         resp = requests.delete(url=url, headers=headers, json=req_body)
         try:
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
             pass
-        return resp.json()
     
 class SpreadsheetApiClient(ApiClient):
     #电子表格api
@@ -163,7 +162,7 @@ class SpreadsheetApiClient(ApiClient):
                 "values": values
             }
         }
-        resp = requests.put(url=url, headers=headers, data=json.dumps(req_body))
+        resp = requests.put(url=url, headers=headers, data=ujson.dumps(req_body))
         try:
             self._check_error_response(resp)
             return resp.json()
