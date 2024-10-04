@@ -45,11 +45,27 @@ class MySql:
                 return cursor.fetchone()
         
     @log_errors
+    def fetchone_like(self, table, key, value):
+        sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} LIKE %s"
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql,(f"%{value}%",))
+                return cursor.fetchone()
+            
+    @log_errors
     def fetchall(self, table, key, value):
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} = %s"
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql,(value,))
+                return cursor.fetchall()
+            
+    @log_errors
+    def fetchall_like(self, table, key, value):
+        sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} LIKE %s"
+        with self.pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql,(f"%{value}%",))
                 return cursor.fetchall()
 
     @log_errors

@@ -14,26 +14,27 @@ from datetime import datetime
 import re
 import time
 import copy
-from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
 import threading
+import hashlib
+import asyncio
 '''
 init
 '''
 app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=10)
 def server_init():
-    global sql,management,ITEM_SHEET_TOKEN, SHEET_ID_TOTAL, SHEET_ID_ITEM, APPROVAL_CODE,\
-          CARD_DISPLAY_JSON, CARD_DISPLAY_REPEAT_ELEMENTS_JSON,BUTTON_CONFIRM_JSON
+    global management,ITEM_SHEET_TOKEN, SHEET_ID_TOTAL, SHEET_ID_ITEM, APPROVAL_CODE,\
+          CARD_DISPLAY_JSON, CARD_DISPLAY_REPEAT_ELEMENTS_JSON,BUTTON_CONFIRM_JSON,FORM_JSON
     logging.basicConfig(level=logging.INFO)
     with open('settings.json', 'r') as f:
         settings = ujson.loads(f.read())
         # 连接mysql服务器
         sql = mysql.MySql(settings['mysql'])
+        management = ApiManagement(sql)
         ITEM_SHEET_TOKEN = settings.get('sheet').get('token')
         SHEET_ID_TOTAL = settings.get('sheet').get('sheet_id_TOTAL')
         SHEET_ID_ITEM = settings.get('sheet').get('sheet_id_ITEM')
 
-        management = ApiManagement(sql)
         APPROVAL_CODE = settings.get('approval').get('approval_code')
         
     with open('message_card.json', 'r') as f:
@@ -41,11 +42,18 @@ def server_init():
         CARD_DISPLAY_JSON = card_json.get('display')
         CARD_DISPLAY_REPEAT_ELEMENTS_JSON = card_json.get('display_repeat_elements')
         BUTTON_CONFIRM_JSON = card_json.get('button_confirm')
+        FORM_JSON = card_json.get('form')
 server_init()
+
+# 存储请求时间的字典
+request_times = defaultdict(list)
+# 限制参数
+REQUEST_LIMIT = 5  # 限制的请求次数
+TIME_WINDOW = 60  # 时间窗口，单位为秒
 
 def restart_app(interval):
     time.sleep(interval)
-    sql.delete("requests")
+    management.clean_requests()
     logging.info("delete requests logs.")
         
 
@@ -69,6 +77,30 @@ event_manager = EventManager()
 '''
 event handler function
 '''
+#TODO:未验证
+def rate_limit(event_type): #限制请求频率
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            user_id = request.json.get('event').get('operator').get('user_id')
+            current_time = time.time()
+
+            # 生成唯一键
+            key = f"{user_id}:{event_type}"
+
+            # 清理超出时间窗口的请求
+            request_times[key] = [timestamp for timestamp in request_times[key] if current_time - timestamp < TIME_WINDOW]
+
+            # 检查是否超过限制
+            if len(request_times[key]) >= REQUEST_LIMIT:
+                return jsonify({"error": "请求频率过高"}), 429
+
+            # 添加当前请求时间
+            request_times[key].append(current_time)
+
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 @event_manager.register("url_verification")
 def request_url_verify_handler(req_data: UrlVerificationEvent):
     # url verification, just need return challenge
@@ -77,32 +109,36 @@ def request_url_verify_handler(req_data: UrlVerificationEvent):
     return jsonify({"challenge": req_data.event.challenge})
 
 @event_manager.register("im.message.receive_v1")
-def message_receive_event_handler(req_data: MessageReceiveEvent):
+async def message_receive_event_handler(req_data: MessageReceiveEvent):
     user_id = req_data.event.sender.sender_id.user_id
     message = req_data.event.message
     sender = req_data.event.sender
 
-    executor.submit(handle_user_message,user_id, message, sender)
+    asyncio.create_task(handle_user_message(user_id, message, sender))
 
     return jsonify()
 
 @event_manager.register("application.bot.menu_v6")
-def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
+@rate_limit("application.bot.menu_v6")    
+async def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
     user_id = req_data.event.operator.operator_id.user_id
     event_key = req_data.event.event_key
 
-    executor.submit(handle_bot_menu_click,user_id,event_key)
+    asyncio.create_task(handle_bot_menu_click(user_id,event_key))
     
     return jsonify()
 
 @event_manager.register("card.action.trigger")
-def card_action_event_handler(req_data: CardActionEvent):
+async def card_action_event_handler(req_data: CardActionEvent):
     event = req_data.event
     token = event.token
     user_id = event.operator.user_id
     alife_card_id = management.is_alive_card(user_id)
     current_card_id = event.context.open_message_id
     toast = None
+    data = None
+    result_queue = asyncio.Queue() #用于在异步任务间安全地传递结果
+
     if alife_card_id and alife_card_id!=current_card_id:
         message_api_client.recall(current_card_id)
         toast = {
@@ -110,44 +146,34 @@ def card_action_event_handler(req_data: CardActionEvent):
                 'content':'Error: 该消息卡片已过期，请使用新卡片'
             }
     else:
-        if event.action.tag == "button":
-            value = event.action.value
-            if value.name == 'object.inspect':
-                if value.id == '0':#归还
-                    toast = {
-                        'type':'success',
-                        'content':'success: 已归还'
-                    }
-            elif value.name == 'object.apply':
-                oid = value.id
-                if management.apply_item(user_id=user_id, oid=int(oid)) == 'success':
-                    toast = {
-                        'type':'success',
-                        'content':'success: 已发送申请'
-                    }
-                else:
-                    toast = {
-                        'type':'error',
-                        'content':'Error: 物品不可用'
-                    }
-            
-            executor.submit(card_action_event_task,token,event,user_id,value)
-        elif event.action.tag == "checker":
-            pass
-
+        asyncio.create_task(card_action_event_task(token, event.action, user_id, result_queue))
+        try: #尝试在2秒内做出响应
+            toast, data = await asyncio.wait_for(result_queue.get(), timeout=2) 
+            #对有toast和data数据的，先响应toast，再处理data
+            if isinstance(data,str) and data == 'placeholder':
+                data = None
+                # 启动一个异步任务来更新卡片
+                asyncio.create_task(update_card(token, result_queue))  # 传递result_queue
+        except asyncio.TimeoutError:
+            # 超时后，启动一个异步任务来更新卡片
+            asyncio.create_task(update_card(token, result_queue))  # 传递result_queue
+        except Exception as e:
+            toast = {'type': 'error', 'content': f'Error: {e}'}
+    
     request_data = {
         'toast':toast if toast else {},
         "card":{
-            "type":"template"
-        }
-    } 
+            "type":"template",
+            "data":data
+        } if data else {}
+    }
     return jsonify(request_data)
 
 @event_manager.register("approval_instance")
-def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
+async def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
     event = req_data.event
     
-    executor.submit(handle_approval_instance,event)
+    asyncio.create_task(handle_approval_instance(event))
 
     return jsonify()
 
@@ -164,12 +190,12 @@ def callback_event_handler():
     elif requests: #事件
         event_id = requests.get('header').get('event_id')
         create_time = requests.get('header').get('create_time')
-        if sql.fetchone('requests','event_id',event_id): #请求已处理，跳过
+        if management.fetch_request(event_id): #请求已处理，跳过
             logging.info(f"This request has been handled. event_id:{event_id}")
             return jsonify()
         else:
             logging.info(f"fetch request,event_id:{event_id}")
-            sql.insert('requests',{'event_id':event_id,'create_time':create_time})
+            management.insert_request(event_id,create_time)
     else:
         logging.error(f"request={requests}")
 
@@ -177,86 +203,75 @@ def callback_event_handler():
     
     return event_handler(event)
 
-# @app.before_first_request
-# def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入members表中
-#     try:
-#         user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
-#         #校验md5值，检测是否有变化
-#         list_string = ''.join(map(str, user_ids))
-#         MD5remote = hashlib.md5()
-#         MD5remote.update(list_string.encode('utf-8'))
-#         MD5remote = MD5remote.hexdigest()
+@app.before_first_request
+def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入members表中
+    try:
+        user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
+        #校验md5值，检测是否有变化
+        list_string = ''.join(map(str, user_ids))
+        MD5remote = hashlib.md5()
+        MD5remote.update(list_string.encode('utf-8'))
+        MD5remote = MD5remote.hexdigest()
 
-#         MD5local = sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
+        MD5local = management.fetch_contact_md5()
 
-#         if MD5local == 'null' or MD5local is None:
-#             sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
-#             MD5local = '0'
-#         else:
-#             MD5local = MD5local[1]
+        if MD5local != MD5remote:
+            items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
+            user_list = list()
+            for item in items:
+                user_list.append({
+                    'name':item['name'],
+                    'user_id':item['user_id']
+                })
+            management.add_member_batch(user_list)
+            management.update_contact_md5(MD5remote)
+            logging.info("add members from contact.")
+        else:
+            logging.info("skip add members from contact.")
+    except Exception as e:
+        raise Exception(f"尝试通过通讯录初始化用户列表失败，请重试\n{e}")
 
-#         if MD5local != MD5remote:
-#             items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
-#             user_list = list()
-#             for item in items:
-#                 user_list.append({
-#                     'name':item['name'],
-#                     'user_id':item['user_id']
-#                 })
-#             management.add_member_batch(user_list)
-#             sql.update('logs',('do','used to detect changes in the contact.'),{'time':MD5remote})
-#             sql.commit()
-#             logging.info("add members from contact.")
-#         else:
-#             logging.info("skip add members from contact.")
-#     except Exception as e:
-#         raise Exception(f"尝试通过通讯录初始化用户列表失败，请重试\n{e}")
-
-# @app.before_first_request
-# def getItemsBySheets(): #从电子表格中获取物品信息
-#     #校验修改时间，检测是否有变化
-#     #TODO:HERE ERROR
-#     try:
-#         DocMetadata = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
-#         if not DocMetadata:
-#             raise Exception(f"ITEM_SHEET_TOKEN:{ITEM_SHEET_TOKEN} 无法找到")
+@app.before_first_request
+def getItemsBySheets(): #从电子表格中获取物品信息
+    #校验修改时间，检测是否有变化
+    #TODO:HERE ERROR
+    try:
+        DocMetadata = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
+        if not DocMetadata:
+            raise Exception(f"ITEM_SHEET_TOKEN:{ITEM_SHEET_TOKEN} 无法找到")
         
-#         latest_modify_time_remote = DocMetadata[0].get('latest_modify_time') #取[0]是因为使用token只会搜到一个文件
-#         latest_modify_time_local = sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
-#         if latest_modify_time_local == 'null' or latest_modify_time_local is None:
-#             sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the spreadsheet.'})
-#             latest_modify_time_local = '0'
-#         else: 
-#             latest_modify_time_local = latest_modify_time_local[1]
-#         #如果物资表修改过（数据库数据过时），重新初始化物资数据库
-#         if latest_modify_time_local != latest_modify_time_remote:
-#             sheet_date =  spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{SHEET_ID_TOTAL}!A2:D")
-#             if not sheet_date.get('data'):
-#                 raise Exception(f"SHEET_ID_TOTAL:{SHEET_ID_TOTAL} 无法找到")
-            
-#             item_list = sheet_date.get('data').get('valueRange').get('values')
-#             logging.info('add item by sheet')
-#             for item in item_list:
-#                 category_name = item[0]
-#                 item_name = item[1]
-#                 item_num_total = item[2] if item[2] else 1
-#                 item_num_broken = item[3] if item[3] else 0
-#                 management.add_items_until_limit(name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
-#             sql.update('logs',('do','used to detect changes in the spreadsheet.'),{'time':latest_modify_time_remote})
-#             sql.commit()
-#         else:
-#             logging.info('skip add item by sheet')
-#     except Exception as e:
-#         raise Exception(f"{e}\n如需通过电子表格初始化数据库，请创建一个电子表格，按格式填入值后，确认`settings.json`中['sheet']:['token']和['sheet_id_TOTAL']是否正确。否则注释掉getItemsBySheets()")
+        latest_modify_time_remote = DocMetadata[0].get('latest_modify_time') #取[0]是因为使用token只会搜到一个文件
+        latest_modify_time_local = management.fetch_itemSheet_md5()
 
-# @app.before_first_request
-# def subApprovalEvent(): #订阅审批事件
-#     #只能订阅一次，因此第一次初始化后会一直弹subscription existed异常（已捕获）
-#     #确认订阅成功后，你完全可以注释掉它
-#     try:
-#         approval_api_event.subscribe(APPROVAL_CODE)
-#     except:
-#         logging.info("subApprovalEvent() 只能订阅一次，因此你完全可以注释掉它")
+        #如果物资表修改过（数据库数据过时），重新初始化物资数据库
+        if latest_modify_time_local != latest_modify_time_remote:
+            sheet_date =  spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{SHEET_ID_TOTAL}!A2:D")
+            if not sheet_date.get('data'):
+                raise Exception(f"SHEET_ID_TOTAL:{SHEET_ID_TOTAL} 无法找到")
+            
+            item_list = sheet_date.get('data').get('valueRange').get('values')
+            logging.info('add item by sheet')
+            for item in item_list:
+                category_name = item[0]
+                item_name = item[1]
+                item_num_total = item[2] if item[2] else 1
+                item_num_broken = item[3] if item[3] else 0
+                management.add_items_until_limit(name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
+            itemSheet_md5 = hashlib.md5().update(latest_modify_time_remote.encode('utf-8'))
+            management.update_itemSheet_md5(itemSheet_md5)
+        else:
+            logging.info('skip add item by sheet')
+    except Exception as e:
+        raise Exception(f"{e}\n如需通过电子表格初始化数据库，请创建一个电子表格，按格式填入值后，确认`settings.json`中['sheet']:['token']和['sheet_id_TOTAL']是否正确。否则注释掉getItemsBySheets()")
+
+@app.before_first_request
+def subApprovalEvent(): #订阅审批事件
+    #只能订阅一次，因此第一次初始化后会一直弹subscription existed异常（已捕获）
+    #确认订阅成功后，你完全可以注释掉它
+    try:
+        approval_api_event.subscribe(APPROVAL_CODE)
+    except:
+        logging.info("subApprovalEvent() 只能订阅一次，因此你完全可以注释掉它")
 
 @app.errorhandler
 def msg_error_handler(ex):
@@ -445,129 +460,189 @@ def replace_placeholders(data, values):
             data = data.replace(f"${{{key}}}", str(value))
     return data
 
-def card_action_event_task(token,event,user_id,value):
-    data = None
-    if value.name == 'home':
-        data = create_messageInteractive(object_id='0')
-    elif value.name == 'self':
-        data = create_messageInteractive(object_id='-1', user_id=user_id)
-    elif value.name == 'object.inspect':
-        data = create_messageInteractive(object_id=value.id)
-    elif value.name == 'back':
-        data = create_messageInteractive(father_id=value.id)
-    elif value.name == 'object.apply':
-        oid = value.id
-        #物品被占用等无法申请的情况，已经在引用该函数前判断
-        item_info = management.get_item(oid)
-        form=[
-            {'id':'do','type':'textarea','value':'申请'},
-            {'id':'date','type':'date',"value": f"{datetime.fromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S+08:00")}"},
-            {'id':'form','type':'fieldList', 'value':[[ 
-                {'id':'name','type':'input','value':f'{item_info['name']}'},
-                {'id':'num','type':'number','value':'1'},
-                {'id':'oid','type':'number','value':oid}
-            ]]},
-        ]
+async def card_action_event_task(token,action,user_id,result_queue):
+    data = 'placeholder'
+    if action.tag == 'button':
+        value = action.value
+        if value.name == 'home':
+            data = create_messageInteractive(object_id='0')
+        elif value.name == 'self':
+            data = create_messageInteractive(object_id='-1', user_id=user_id)
+        elif value.name == 'object.inspect':
+            data = create_messageInteractive(object_id=value.id)
+        elif value.name == 'back':
+            data = create_messageInteractive(object_id=int(value.id)/1000)
+        elif value.name == 'object.apply':
+            oid = value.id
+            if management.apply_item(user_id=user_id, oid=int(oid)) == 'success':
+                toast = {
+                    'type':'success',
+                    'content':'success: 已发送申请'
+                }
+                await result_queue.put((toast, data)) #对有toast的数据先行返回
+                
+                item_info = management.get_item(oid)
+                form=[
+                    {'id':'do','type':'textarea','value':'申请'},
+                    {'id':'date','type':'date',"value": f"{datetime.fromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S+08:00")}"},
+                    {'id':'form','type':'fieldList', 'value':[[ 
+                        {'id':'name','type':'input','value':f'{item_info['name']}'},
+                        {'id':'num','type':'number','value':'1'},
+                        {'id':'oid','type':'number','value':oid}
+                    ]]},
+                ]
 
-        approval_api_event.create(approval_code=APPROVAL_CODE, user_id=user_id,\
-                                form=ujson.dumps(form))
-        logging.info(f"发送审批,{user_id} 申请 {oid}")
-        data = create_messageInteractive(object_id=int(oid)/1000)
-    elif value.name == 'object.return':
-        management.return_item(user_id,value.object_param_1)
-        data = create_messageInteractive(object_id='-1', user_id=user_id)
+                approval_api_event.create(approval_code=APPROVAL_CODE, user_id=user_id,\
+                                        form=ujson.dumps(form))
+                logging.info(f"发送审批,{user_id} 申请 {oid}")
+                data = create_messageInteractive(object_id=int(oid)/1000)
+            else:
+                toast = {
+                    'type':'error',
+                    'content':'Error: 物品不可用'
+                }
+                data = None
+        elif value.name == 'object.return':
+            toast = {
+                'type':'success',
+                'content':'success: 已归还'
+            }
+            management.return_item(user_id,value.object_param_1)
+            await result_queue.put((toast, data)) #对有toast的数据先行返回
+            data = create_messageInteractive(object_id=-1, user_id=user_id)
+    elif action.tag == 'input':
+        input_value = action.input_value
+        if action.name == "input.search":
+            data = create_messageInteractive(object_id=-2, target=input_value)
+        
+    await result_queue.put((toast, data))
 
-    logging.info(f"更新卡片token:{token}")
-    message_api_client.update_interactive(token,data)
+async def update_card(token, result_queue):
+    # 等待获取结果
+    toast, data = await result_queue.get()
+    if data:
+        logging.info(f"更新卡片token:{token}")
+        await message_api_client.update_interactive(token, data)
 
-def create_messageInteractive(object_id=None, father_id=None, user_id=None):
+def can_convert_to_int(a):
+    try:
+        int(a)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+def create_messageInteractive(object_id=None, user_id=None, target=None):
     title_map = {
         '0':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_info', 'title':"个人仓库", 'param1':'ID', 'param2':'名称', 'param3':'备注'},
         '1':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_category', 'title':"物资类型", 'param1':'ID', 'param2':'名称', 'param3':'数量'},
         '2':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_list', 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量'},
         '3':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_info', 'title':"物资仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态'},
+        '4':{'CARD_JSON':CARD_DISPLAY_JSON, 'table':'item_list', 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量'},
     }
-    action_title_map = {
+    action_map = {
         '0':{'name':'归还','action':'object.return'},
         '3':{'name':'申请','action':'object.apply'},
+        '4':{'name':'申请','action':'object.apply'},
     }
     if object_id:
         object_id = int(object_id)
         _father_id = str(object_id)
-        title_id = '0' if object_id==-1 else \
+        title_id = '4' if object_id==-2 else \
+            ('0' if object_id==-1 else \
             ('1' if object_id==0 else \
              ('2' if object_id < 1000 else \
-              ('3' ) ) )
+              ('3' ) ) ) )
         _id = object_id
-    elif father_id:
-        father_id = int(father_id)
-        _father_id = str(int(father_id/1000))
-        title_id = '1' if father_id<1000 else \
-            ('2' if father_id < 1000000 else\
-              '3')
-        _id = _father_id
     else:
         raise Exception("参数错误")
-    
-    if title_id == '0': #个人页
-        _list = management.get_member_items(user_id)
-        object_list =[{'param1': id_, 'param2': name_, 'param3': do_, 'do': do_} 
-                    for id_, name_, do_ in zip(_list['oid'], _list['name'], _list['do'])] if _list else None
-    elif title_id == '1': #仓库（所有物品类型）
-        _list = management.get_category()
-        object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_)} 
-                    for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
-    elif title_id == '2': #仓库（某类型的所有物品名）
-        _list = management.get_list(father=_id)
-        object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_)} 
-                    for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
-    elif title_id == '3': #仓库（某名字的所有物品信息）
-        _list = management.get_items(father=_id)
-        object_list =[{'param1': id_, 'param2': name_, 'param3': useable_, 'do': do_} 
-                    for id_, name_, useable_, do_ in zip(_list['id'], _list['name'], _list['useable'], _list['do'])] if _list else None
-
-    values = {
-        'title': title_map[title_id]['title'],
-        'father_id':str(_father_id)
-    }
-
-    title_text = (
-        f"       "
-        f"<font color=blue>{format_with_margin(title_map[title_id]['param1'],10)}</font>  "
-        f"<font color=red>{format_with_margin(title_map[title_id]['param3'],10)}</font>  "
-        f"<font color=green>{format_with_margin(title_map[title_id]['param2'],19,6)}</font>"
-    )
-    values['title_text']=title_text
-
-    json_data = copy.deepcopy(title_map[title_id]['CARD_JSON'])
-    result_data = replace_placeholders(json_data, values)
-
-    if object_list:
-        for obj in object_list:
-            checker_text = (
-                f"<font color=blue>{format_with_margin(obj['param1'],10)}</font>  "
-                f"<font color=red>{format_with_margin(obj['param3'],10)}</font>  "
-                f"<font color=green>{format_with_margin(obj['param2'],20,6)}</font>"
-            )
-            obj['checker_text'] = checker_text
-            repeat_elements = copy.deepcopy(CARD_DISPLAY_REPEAT_ELEMENTS_JSON)
+    try:
+        if title_id == '0': #个人页
+            _list = management.get_member_items(user_id)
+            object_list =[{'param1': id_, 'param2': name_, 'param3': do_, 'do': do_} 
+                        for id_, name_, do_ in zip(_list['oid'], _list['name'], _list['do'])] if _list else None
+        elif title_id == '1': #仓库（所有物品类型）
+            _list = management.get_category()
+            object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_)} 
+                        for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
+        elif title_id == '2': #仓库（某类型的所有物品名）
+            _list = management.get_list(category_id=_id)
+            object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_)} 
+                        for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
+        elif title_id == '3': #仓库（某名字的所有物品信息）
+            _list = management.get_items(name_id=_id)
+            object_list =[{'param1': id_, 'param2': name_, 'param3': useable_, 'do': do_} 
+                        for id_, name_, useable_, do_ in zip(_list['id'], _list['name'], _list['useable'], _list['do'])] if _list else None
+        elif title_id == '4': #仓库(搜索页)
+            display_target = 'list' #默认以列表方式呈现
+            if can_convert_to_int(target) and int(target)>0: #id
+                if int(target)>1000000:  #oid
+                    _list = management.get_item(oid=target)
+                    display_target = 'object' #仅对搜索具体oid的操作以对象方式呈现
+                elif int(target)>1000: #name_id
+                    _list = management.get_items(name_id=target)
+                else: #category_id
+                    _list = management.get_list(category_id=target)
+            else: #名称
+                _list = management.get_items(name=target)
             
-            #添加二次确认弹窗
-            if title_id in ('3','0'):
-                confirm_data = copy.deepcopy(BUTTON_CONFIRM_JSON)
-                action_name = action_title_map[title_id].get('name')
-                action = action_title_map[title_id].get('action')
-                confirm_data['text']['content'] = confirm_data['text']['content'].replace(f"${{action}}", action_name)
-                confirm_data = replace_placeholders(confirm_data,obj)
-                repeat_elements['button_area']['buttons'][0]['confirm']=confirm_data
-                repeat_elements['button_area']['buttons'][0]['value']['name']=action
+            if display_target == 'list':
+                object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_)} 
+                        for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
+            else:
+                object_list =[{'param1': id_, 'param2': name_, 'param3': useable_, 'do': do_} 
+                        for id_, name_, useable_, do_ in zip(_list['id'], _list['name'], _list['useable'], _list['do'])] if _list else None
+        
+        values = {
+            'title': title_map[title_id]['title'],
+            'father_id':str(_father_id)
+        }
+        title_text = (
+            f"       "
+            f"<font color=blue>{format_with_margin(title_map[title_id]['param1'],10)}</font>  "
+            f"<font color=red>{format_with_margin(title_map[title_id]['param3'],10)}</font>  "
+            f"<font color=green>{format_with_margin(title_map[title_id]['param2'],19,6)}</font>"
+        )
+        values['title_text']=title_text
+
+        json_data = copy.deepcopy(title_map[title_id]['CARD_JSON'])
+        #标题和列名
+        result_data = replace_placeholders(json_data, values)
+        #循环容器-勾选器
+        if object_list:
+            for obj in object_list:
+                checker_text = (
+                    f"<font color=blue>{format_with_margin(obj['param1'],10)}</font>  "
+                    f"<font color=red>{format_with_margin(obj['param3'],10)}</font>  "
+                    f"<font color=green>{format_with_margin(obj['param2'],20,6)}</font>"
+                )
+                obj['checker_text'] = checker_text
+                repeat_elements = copy.deepcopy(CARD_DISPLAY_REPEAT_ELEMENTS_JSON)
                 
-            result_data['elements'].append(replace_placeholders(repeat_elements, obj))
-    
-    return result_data
+                #对(申请/归还)操作
+                if title_id in ('3','0'):
+                    #添加二次确认弹窗+修改按键动作值
+                    confirm_data = copy.deepcopy(BUTTON_CONFIRM_JSON)
+                    action_name = action_map[title_id].get('name')
+                    action = action_map[title_id].get('action')
+                    confirm_data['text']['content'] = confirm_data['text']['content'].replace(f"${{action}}", action_name)
+                    confirm_data = replace_placeholders(confirm_data,obj)
+                    repeat_elements['button_area']['buttons'][0]['confirm']=confirm_data
+                    repeat_elements['button_area']['buttons'][0]['value']['name']=action
+
+                result_data['elements'].append(replace_placeholders(repeat_elements, obj))
+            #表单容器
+            result_data['elements'].append(FORM_JSON)
+        else:
+            # result_data['elements'].append({
+            #     #TEXT:未找到对应物品
+            # })
+            pass
+        return result_data
+    except Exception as e:
+        logging.error(f"Error while create card: {e}")
 
 '''
-about user commands
+user commands
 '''
 def command_add_object(reply_map, message, sender, object, params):
     necessary_param_map = {
@@ -746,7 +821,7 @@ def command_get_help(reply_map, message, sender, object, params):
 
 if __name__ == "__main__":
     interval = 10800  # 每3小时重启一次
-    threading.Thread(target=restart_app,args=(interval,)) #TODO:这里也使用ThreadPoolExecutor会使进程卡死
+    threading.Thread(target=restart_app,args=(interval,)) 
 
     # 启动服务
     app.run(host="0.0.0.0", port=3000, debug=True)

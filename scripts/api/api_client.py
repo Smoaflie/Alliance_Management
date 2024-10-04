@@ -3,6 +3,7 @@ import os
 import logging
 import requests
 import ujson
+import time
 
 APP_ID = os.getenv("APP_ID")
 APP_SECRET = os.getenv("APP_SECRET")
@@ -14,11 +15,24 @@ MESSAGE_URI = "/open-apis/im/v1/messages"
 TODO:测试下所有接口对错误类型的输入会不会产生错误
 '''
 class ApiClient(object):
-    def __init__(self, app_id, app_secret, lark_host):
+    def __init__(self, app_id, app_secret, lark_host, max_retries=3, retry_delay=2):
         self._app_id = app_id
         self._app_secret = app_secret
         self._lark_host = lark_host
         self._tenant_access_token = ""
+        self.max_retries = max_retries  # 最大重试次数
+        self.retry_delay = retry_delay    # 重试间隔（秒）
+
+    def _send_with_retries(self, method, *args, **kwargs):
+        for attempt in range(self.max_retries):
+            try:
+                return method(*args, **kwargs)
+            except LarkException as e:
+                logging.warning(f"请求失败，尝试重试 {attempt + 1}/{self.max_retries}，错误信息: {e}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)  # 等待一段时间再重试
+                else:
+                    raise  # 超过最大重试次数，抛出异常
 
     @property
     def tenant_access_token(self):
@@ -54,7 +68,7 @@ class MessageApiClient(ApiClient):
         return self.send("user_id", user_id, "text", content)
     def send_interactive_with_user_id(self, user_id, content):
         return self.send("user_id", user_id, "interactive", content)
-
+    
     def send(self, receive_id_type, receive_id, msg_type, content):
         # send message to user, implemented based on Feishu open api capability. doc link: https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create
         self._authorize_tenant_access_token()
@@ -71,12 +85,12 @@ class MessageApiClient(ApiClient):
             "msg_type": msg_type,
             "content": ujson.dumps(content)
         }
-        resp = requests.post(url=url, headers=headers, json=req_body)
+        resp = self._send_with_retries(requests.post,url=url, headers=headers, json=req_body)
         try:
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
-        return resp.json()
+            raise Exception(f"{e}")
 
     def recall(self, message_id):
         self._authorize_tenant_access_token()
@@ -87,12 +101,12 @@ class MessageApiClient(ApiClient):
             "Authorization": "Bearer " + self.tenant_access_token,
         }
 
-        resp = requests.delete(url=url, headers=headers)
+        resp = self._send_with_retries(requests.delete,url=url, headers=headers)
         try:
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
-        return resp.json()
+            raise Exception(f"{e}")
     
     def update_interactive(self,token,card):
         self._authorize_tenant_access_token()
@@ -108,12 +122,12 @@ class MessageApiClient(ApiClient):
             'token': token,
             'card': card
         }
-        resp = requests.delete(url=url, headers=headers, json=req_body)
+        resp = self._send_with_retries(requests.delete,url=url, headers=headers, json=req_body)
         try:
             self._check_error_response(resp)
             return resp.json()
         except LarkException as e:
-            pass
+            raise Exception(f"{e}")
     
 class SpreadsheetApiClient(ApiClient):
     #电子表格api
@@ -124,13 +138,13 @@ class SpreadsheetApiClient(ApiClient):
             "Authorization": "Bearer " + self.tenant_access_token,
         }
 
-        resp = requests.get(url=url, headers=headers)
+        resp = self._send_with_retries(requests.get,url=url, headers=headers)
         try:
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
+            raise Exception(f"{e}")
 
-        return resp.json()
 
     def readRange(self, spreadsheet_token, range):
         self._authorize_tenant_access_token()
@@ -141,12 +155,12 @@ class SpreadsheetApiClient(ApiClient):
             'Content-Type': "application/json; charset=utf-8"
         }
 
-        resp = requests.get(url=url, headers=headers)
+        resp = self._send_with_retries(requests.get,url=url, headers=headers)
         try:
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
-        return resp.json()
+            raise Exception(f"{e}")
 
     def modifySheet(self, spreadsheetToken, sheetId, range, values):
         self._authorize_tenant_access_token()
@@ -162,12 +176,12 @@ class SpreadsheetApiClient(ApiClient):
                 "values": values
             }
         }
-        resp = requests.put(url=url, headers=headers, data=ujson.dumps(req_body))
+        resp = self._send_with_retries(requests.put,url=url, headers=headers, data=ujson.dumps(req_body))
         try:
             self._check_error_response(resp)
             return resp.json()
         except LarkException as e:
-            raise
+            raise Exception(f"{e}")
 
 class ContactApiClient(ApiClient):
     #通讯录api
@@ -183,12 +197,12 @@ class ContactApiClient(ApiClient):
             'user_id_type': user_id_type,
             'department_id_type': department_id_type,
         }
+        resp = self._send_with_retries(requests.get,url=url, headers=headers, params=params)
         try:
-            resp = requests.get(url=url, headers=headers, params=params)
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
-        return resp.json()
+            raise Exception(f"{e}")
     
     def get_users_batch(self, user_ids, user_id_type = 'open_id'):
         #批量获取用户信息
@@ -202,12 +216,12 @@ class ContactApiClient(ApiClient):
             'user_ids': user_ids,
             'user_id_type': user_id_type,
         }
+        resp = self._send_with_retries(requests.get,url=url, headers=headers, params=params)
         try:
-            resp = requests.get(url=url, headers=headers, params=params)
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
-        return resp.json()
+            raise Exception(f"{e}")
 
 class CloudApiClient(ApiClient):
     #云空间api
@@ -228,12 +242,12 @@ class CloudApiClient(ApiClient):
             'docs_types': docs_types
         }
     
-        resp = requests.post(url=url, headers=headers, json=req_body)
+        resp = self._send_with_retries(requests.post,url=url, headers=headers, json=req_body)
         try:
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
-        return resp.json()
+            raise Exception(f"{e}")
     
     def getDocMetadata(self, doc_token, doc_type, user_id_type='open_id'):
         self._authorize_tenant_access_token()
@@ -255,13 +269,13 @@ class CloudApiClient(ApiClient):
             'request_docs':request_docs
         }
     
-        resp = requests.post(url=url, headers=headers, json=req_body, params=params)
+        resp = self._send_with_retries(requests.post,url=url, headers=headers, json=req_body, params=params)
         
         try:
             self._check_error_response(resp)
             return resp.json()
-        except LarkException:
-            raise
+        except LarkException as e:
+            raise Exception(f"{e}")
 
 class ApprovalApiClient(ApiClient):
     def create(self, approval_code, form, user_id=None):
@@ -278,12 +292,12 @@ class ApprovalApiClient(ApiClient):
             'form':form
         }
     
-        resp = requests.post(url=url, headers=headers, json=req_body)
+        resp = self._send_with_retries(requests.post,url=url, headers=headers, json=req_body)
         try:
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
-        return resp.json()
+            raise Exception(f"{e}")
 
     def subscribe(self, approval_code):
         self._authorize_tenant_access_token()
@@ -292,12 +306,12 @@ class ApprovalApiClient(ApiClient):
             "Authorization": "Bearer " + self.tenant_access_token,
         }
 
-        resp = requests.post(url=url, headers=headers)
+        resp = self._send_with_retries(requests.post,url=url, headers=headers)
         try:
             self._check_error_response(resp)
             return resp.json()
         except LarkException as e:
-            raise
+            raise Exception(f"{e}")
 
     def fetch_instance(self, instance_id):
         self._authorize_tenant_access_token()
@@ -306,12 +320,12 @@ class ApprovalApiClient(ApiClient):
             "Authorization": "Bearer " + self.tenant_access_token,
         }
 
-        resp = requests.get(url=url, headers=headers)
+        resp = self._send_with_retries(requests.get,url=url, headers=headers)
         try:
             self._check_error_response(resp)
+            return resp.json()
         except LarkException as e:
-            pass
-        return resp.json()
+            raise Exception(f"{e}")
 
 
 class LarkException(Exception):

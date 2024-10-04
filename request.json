@@ -1,9 +1,9 @@
 {
     "schema": "2.0",
     "header": {
-        "event_id": "d1cefb1141cc88fe4d4c2b205438693a",
+        "event_id": "911f59fb9806741dcb24abff39d647ae",
         "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-        "create_time": "1727621064238479",
+        "create_time": "1727946619934941",
         "event_type": "card.action.trigger",
         "tenant_key": "15874fbe83c4d75f",
         "app_id": "cli_a6687b8d5973100b"
@@ -15,17 +15,15 @@
             "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
             "union_id": "on_39c045cdfce9993e11416da69de0d585"
         },
-        "token": "c-7f7cb4d2550c0577d3d2a0f1225f7b0ddbe7920f",
+        "token": "c-ed92fb431b1a39e0754fbd0b752b51d52f020ca1",
         "action": {
-            "value": {
-                "id": "-1",
-                "name": "back"
-            },
-            "tag": "button"
+            "tag": "input",
+            "input_value": "ab",
+            "name": "input.search"
         },
         "host": "im_message",
         "context": {
-            "open_message_id": "om_94ab0d46edce12eea795b07186a10899",
+            "open_message_id": "om_e086967d1581e53ff7b24494e63e1b94",
             "open_chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad"
         }
     }

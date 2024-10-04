@@ -22,8 +22,10 @@ class ApiManagement(object):
             r['total'].append(it[2])
         return r
     
-    def get_list(self, father):
-        info = self.sql.fetchall('item_list', 'father', int(father))
+    def get_list(self, category_id):
+        info = self.sql.fetchall('item_list', 'father', int(category_id))
+        if not info:
+            raise Exception(f"无法找到目标物品 category_id:{category_id}")
         r = {'id': [], 'father': [], 'name': [], 'total': [], 'free': []}
         for it in info:
             r['id'].append(it[0])
@@ -80,18 +82,25 @@ class ApiManagement(object):
         else:
             raise Exception(f"无法找到目标物品 oid:{str(oid)}") if info else None
 
-    def get_items(self, father=None, father_name=None):
-        if not (father or father_name):
+    def get_items(self, name_id=None, name=None):
+        if not (name_id or name):
             raise Exception("参数错误")
-        if father_name:
-            father = self.sql.fetchone('item_list', 'name', father_name)
+        if name:
+            father = self.sql.fetchone_like('item_list', 'name', name)
         else:
-            father = self.sql.fetchone('item_list', 'id', father)
-        father_id = father[0]
-        item_name = father[2]
+            father = self.sql.fetchone('item_list', 'id', int(name_id))
+        
+        if not father:
+            if name:
+                raise Exception(f"无法找到目标物品 name:{name}")
+            if name_id:
+                raise Exception(f"无法找到目标物品 name_id:{name_id}")
 
-        info = self.sql.fetchall('item_info', 'father', int(father_id))
-        return self.return_itemTable_by_info(info, name=item_name)  if info else None
+        name_id = father[0]
+        name = father[2]
+
+        info = self.sql.fetchall('item_info', 'father', int(name_id))
+        return self.return_itemTable_by_info(info, name=name)  if info else None
     
     def get_member_items(self, user_id=None, user_name=None):
         if not user_name:
@@ -372,7 +381,7 @@ class ApiManagement(object):
         result = self.sql.fetchone('members','user_id',user_id)
         return result[2]==1
     
-    def get_md5(self):
+    def get_database_md5(self):
         table_list = self.sql.gettable()
         table_checksum_list = []
         md5_hash = hashlib.md5()
@@ -381,3 +390,32 @@ class ApiManagement(object):
         combined_string = ''.join(table_checksum_list)
         md5_hash.update(combined_string.encode('utf-8'))
         return  md5_hash.hexdigest()
+    
+    def fetch_request(self,event_id):
+        return self.sql.fetchone('requests','event_id',event_id)
+ 
+    def insert_request(self,event_id,create_time):
+        return self.sql.insert('requests',{'event_id':event_id,'create_time':create_time})
+    
+    def clean_requests(self):
+        return self.sql.delete("requests")
+
+    def fetch_contact_md5(self):
+        result = self.sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
+        return result[1]
+    
+    def update_contact_md5(self,contact_md5):
+        if not self.fetch_contact_md5():
+            self.sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
+        self.sql.update('logs',('do','used to detect changes in the contact.'),{'time':contact_md5})
+
+    def fetch_itemSheet_md5(self):
+        result = self.sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
+        return result[1]
+    
+    def update_itemSheet_md5(self,itemSheet_md5):
+        if not self.fetch_itemSheet_md5():
+            self.sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the spreadsheet.'})
+        self.sql.update('logs',('do','used to detect changes in the spreadsheet.'),{'time':itemSheet_md5})
+    
+    

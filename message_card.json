@@ -99,6 +99,19 @@
                 ]
             },
             {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "input",
+                        "placeholder": {
+                            "tag": "plain_text",
+                            "content": "搜索"
+                        },
+                        "name": "input.search"
+                    }
+                ]
+            },
+            {
                 "tag": "markdown",
                 "content":"${title_text}"
             },
@@ -155,5 +168,116 @@
             "tag": "plain_text",
             "content": "你是否要 ${action} ${param2} oid:${param1}\n备注：${do}"
         }
+    },
+    "form":{
+        "tag": "form",
+        "name": "Form_lvxmxsxf",
+        "elements": [
+            {
+                "tag": "column_set",
+                "flex_mode": "stretch",
+                "background_style": "default",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "weight": 1,
+                        "vertical_align": "top",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "请选择："
+                            }
+                        ]
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "weight": 1,
+                        "vertical_align": "top",
+                        "elements": [
+                            {
+                                "tag": "select_static",
+                                "name": "Select_pj6kw7cxyl",
+                                "placeholder": {
+                                    "tag": "plain_text",
+                                    "content": "这是一个选择菜单"
+                                },
+                                "value": {
+                                    "key": "value"
+                                },
+                                "options": [
+                                    {
+                                        "text": {
+                                            "tag": "plain_text",
+                                            "content": "选项1"
+                                        },
+                                        "value": "1"
+                                    },
+                                    {
+                                        "text": {
+                                            "tag": "plain_text",
+                                            "content": "选项2"
+                                        },
+                                        "value": "2"
+                                    },
+                                    {
+                                        "text": {
+                                            "tag": "plain_text",
+                                            "content": "选项3"
+                                        },
+                                        "value": "3"
+                                    },
+                                    {
+                                        "text": {
+                                            "tag": "plain_text",
+                                            "content": "选项4"
+                                        },
+                                        "value": "4"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "tag": "input",
+                "name": "Input_fhaty9jktke",
+                "placeholder": {
+                    "tag": "plain_text",
+                    "content": "请输入"
+                },
+                "max_length": 5,
+                "label": {
+                    "tag": "plain_text",
+                    "content": "请输入文本："
+                },
+                "label_position": "left",
+                "value": {
+                    "k": "v"
+                }
+            },
+            {
+                "action_type": "form_submit",
+                "name": "Button_e4d9u982x5k",
+                "tag": "button",
+                "text": {
+                    "content": "提交",
+                    "tag": "lark_md"
+                },
+                "type": "primary",
+                "confirm": {
+                    "title": {
+                        "tag": "plain_text",
+                        "content": "title"
+                    },
+                    "text": {
+                        "tag": "plain_text",
+                        "content": "确认提交吗"
+                    }
+                }
+            }
+        ]
     }
 }
