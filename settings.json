@@ -15,8 +15,9 @@
     "approval": {
         "approval_code": "74FB3848-8DD6-4E09-90B5-0260B9546D8A"
     },
-    "message_card": {
-        "display_card_token":"AAq7rfpwDmKrO",
-        "apply_card_token": "AAq7gOddRQSIf"
+    "redis": {
+        "host":"localhost",
+        "port": 6379,
+        "db":0
     }
 }

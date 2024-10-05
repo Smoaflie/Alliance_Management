@@ -22,10 +22,23 @@ class ApiManagement(object):
             r['total'].append(it[2])
         return r
     
-    def get_list(self, category_id):
-        info = self.sql.fetchall('item_list', 'father', int(category_id))
-        if not info:
-            raise Exception(f"无法找到目标物品 category_id:{category_id}")
+    def get_list(self, category_id=None, name=None, name_id=None):
+        if category_id:
+            info = self.sql.fetchall('item_list', 'father', int(category_id))
+            if not info:
+                raise Exception(f"无法找到目标物品 category_id:{category_id}")
+        elif name:
+            info = self.sql.fetchall_like('item_list', 'name', name)
+            if not info:
+                raise Exception(f"无法找到目标物品 name:{name}")
+        elif name_id:
+            info = self.sql.fetchall('item_list', 'id', name_id)
+            if not info:
+                raise Exception(f"无法找到目标物品 name_id:{name_id}")
+        else:
+            raise Exception(f"{__name__} 缺少参数")
+        
+        
         r = {'id': [], 'father': [], 'name': [], 'total': [], 'free': []}
         for it in info:
             r['id'].append(it[0])
@@ -45,7 +58,7 @@ class ApiManagement(object):
             3: '报废',
             4: '申请中'
         }
-        
+
         for it in info:
             r['name'].append(name)
             if isinstance(it, (list,tuple)):
@@ -86,7 +99,7 @@ class ApiManagement(object):
         if not (name_id or name):
             raise Exception("参数错误")
         if name:
-            father = self.sql.fetchone_like('item_list', 'name', name)
+            father = self.sql.fetchone('item_list', 'name', name)
         else:
             father = self.sql.fetchone('item_list', 'id', int(name_id))
         
@@ -114,23 +127,32 @@ class ApiManagement(object):
         if not member_items:
             return None
         
+        useable_map = {
+            1: '可用',
+            0: '已借出',
+            2: '维修中',
+            3: '报废',
+            4: '申请中'
+        }
+        
         name_id_map = {}
-        member_items_out = {'oid':[], 'name':[], 'do':[]} 
+        member_items_out = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': []}
         for item in member_items:
             oid     = item[0]
             name_id = str(item[1])
-            do      = item[4]
 
             if name_id not in name_id_map:
                 item_list = self.get_list(int(oid/1000000))
                 for name_id_,name_ in zip(item_list['id'],item_list['name']):
                     name_id_map[f'{name_id_}']=name_
-        
             name = name_id_map[name_id]
 
-            member_items_out['oid'].append(oid)
             member_items_out['name'].append(name)
-            member_items_out['do'].append(do)
+            member_items_out['id'].append(oid)
+            member_items_out['father'].append(str(item[1]))
+            member_items_out['useable'].append(useable_map.get(item[2], '未知'))
+            member_items_out['wis'].append(item[3])
+            member_items_out['do'].append(item[4])
         
         return member_items_out
 

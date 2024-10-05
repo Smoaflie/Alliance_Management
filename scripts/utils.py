@@ -9,11 +9,3 @@ class Obj(dict):
 
 def dict_2_obj(d: dict):
     return Obj(d)
-
-def obj_2_dict(obj):
-    if isinstance(obj, Obj):
-        return {k: obj_2_dict(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [obj_2_dict(x) for x in obj]
-    else:
-        return obj
