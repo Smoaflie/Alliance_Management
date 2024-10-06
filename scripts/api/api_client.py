@@ -182,6 +182,29 @@ class SpreadsheetApiClient(ApiClient):
             return resp.json()
         except LarkException as e:
             raise Exception(f"{e}")
+    
+    def dimensionRange(self, spreadsheetToken, sheetId, majorDimension, startIndex, endIndex):
+        self._authorize_tenant_access_token()
+        url = "{}/open-apis/sheets/v2/spreadsheets/{}/dimension_range".format(self._lark_host, spreadsheetToken)
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": "Bearer " + self.tenant_access_token,
+        }
+
+        req_body = {
+            "dimension": {
+                "sheetId": sheetId,
+                "majorDimension":majorDimension,
+                "startIndex":startIndex,
+                "endIndex":endIndex
+            }
+        }
+        resp = self._send_with_retries(requests.delete,url=url, headers=headers, data=ujson.dumps(req_body))
+        try:
+            self._check_error_response(resp)
+            return resp.json()
+        except LarkException as e:
+            raise Exception(f"{e}")
 
 class ContactApiClient(ApiClient):
     #通讯录api

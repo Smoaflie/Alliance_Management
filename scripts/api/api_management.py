@@ -9,6 +9,15 @@ TODO:测试下所有接口对错误类型的输入会不会产生错误
 '''
 
 class ApiManagement(object):
+    useable_map = {
+        1: '可用',
+        0: '已借出',
+        2: '维修中',
+        3: '报废',
+        4: '申请中',
+        5: '未知'
+    }
+    
     def __init__(self, sql : api_mysql.MySql):
         self.sql = sql
 
@@ -51,28 +60,22 @@ class ApiManagement(object):
     def return_itemTable_by_info(self, info, name=None):
         r = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': []}
         
-        useable_map = {
-            1: '可用',
-            0: '已借出',
-            2: '维修中',
-            3: '报废',
-            4: '申请中'
-        }
+        
 
         for it in info:
             r['name'].append(name)
             if isinstance(it, (list,tuple)):
                 r['id'].append(it[0])   # 如果是可迭代对象，取第一个元素
                 r['father'].append(it[1])
-                r['useable'].append(useable_map.get(it[2], '未知'))
+                r['useable'].append(self.useable_map.get(it[2], '未知'))
                 r['wis'].append(it[3] if it[3] not in ('null', None, '', 'None') else '未知')  
                 r['do'].append(it[4] if it[4] not in ('null', None, '', 'None') else '无')
             else:
-                r['id'] = info[0]  # 否则直接添加
-                r['father'] = info[1]
-                r['useable'] = useable_map.get(info[2], '未知')
-                r['wis'] = info[3] if info[3] not in ('null', None, '', 'None') else '未知'
-                r['do'] = info[4] if info[4] not in ('null', None, '', 'None') else '无'
+                r['id'].append(info[0])  # 否则直接添加
+                r['father'].append(info[1])
+                r['useable'].append(self.useable_map.get(info[2], '未知'))
+                r['wis'].append(info[3] if info[3] not in ('null', None, '', 'None') else '未知')
+                r['do'].append(info[4] if info[4] not in ('null', None, '', 'None') else '无')
                 break
         return r
     
@@ -126,15 +129,7 @@ class ApiManagement(object):
 
         if not member_items:
             return None
-        
-        useable_map = {
-            1: '可用',
-            0: '已借出',
-            2: '维修中',
-            3: '报废',
-            4: '申请中'
-        }
-        
+
         name_id_map = {}
         member_items_out = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': []}
         for item in member_items:
@@ -150,7 +145,7 @@ class ApiManagement(object):
             member_items_out['name'].append(name)
             member_items_out['id'].append(oid)
             member_items_out['father'].append(str(item[1]))
-            member_items_out['useable'].append(useable_map.get(item[2], '未知'))
+            member_items_out['useable'].append(self.useable_map.get(item[2], '未知'))
             member_items_out['wis'].append(item[3])
             member_items_out['do'].append(item[4])
         
@@ -200,7 +195,8 @@ class ApiManagement(object):
 
     def add_item(self, name_id=None, name=None,  \
                   num=1, num_broken=None,\
-                  category_name=None, category_id=None, params=None):
+                  category_name=None, category_id=None, params=None,\
+                    oid=None,useable=None,wis=None,do=None):
         if params:
             name_id = params.get('name_id')
             num = params.get('num')
@@ -227,16 +223,25 @@ class ApiManagement(object):
             name_id = father_recoder[0]
 
         self_recoder = self.sql.fetchall('item_info', 'father', name_id)
-        new_id = (1000*name_id) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
-        for i in range(int(num) if num else 1):
-            # 设置Id，进行添加
-            self.sql.insert('item_info', {
-                'id':new_id+i,
-                'father':name_id,
-            })
-        if num_broken:
-            for i in range(num_broken):
-                self.sql.update('item_info', ('id',i+new_id), {'useable':3})
+        insert_data = {
+            'id':0,
+            'father':name_id
+        }
+        if not oid: #批量设置
+            new_id = (1000*name_id) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
+            for i in range(int(num) if num else 1):
+                # 设置Id，进行添加
+                insert_data['id'] = name_id + i
+                self.sql.insert('item_info', insert_data)
+            if num_broken:
+                for i in range(num_broken):
+                    self.sql.update('item_info', ('id',i+new_id), {'useable':3})
+        elif oid and wis and do:
+            insert_data['id'] = name_id*1000 + int(oid)%1000
+            insert_data['useable'] = next((key for key, value in self.useable_map.items() if value == useable), 5)
+            insert_data['wis'] = wis
+            insert_data['do'] = do
+            self.sql.insert('item_info', insert_data)
 
     def add_items_until_limit(self, name_id=None, num=1, name=None, num_broken=None, category_name=None, category_id=None):
         if name_id:
@@ -337,22 +342,17 @@ class ApiManagement(object):
         elif id:
             self.sql.delete('item_category','id',id)
 
-    def apply_item(self, user_id, oid, do=None):
-        item_info = self.get_item(oid)
-        if item_info['useable'] != '可用':
-            return 'error'
-        
-        do = item_info['do'] + do if do else item_info['do']
+    def del_all(self):
+        self.sql.delete('item_info')
+        self.sql.delete('item_list')
+        self.sql.delete('item_category')
 
-        self.sql.insert('logs', {'time':int(time.time()*1000),
-                                 'userId':user_id,
-                                 'operation':'APPLY',
-                                 'object':oid,
-                                 })
-        self.sql.update('item_info', ('id',oid), 
-                        {'useable':4,
-                        'do':do})
-        return 'success'
+    def apply_item(self, user_id, oid, do=None):
+        # item_info = self.get_item(oid)
+        # if item_info['useable'][0] != '可用':
+        #     raise Exception (f'Error while {user_id} apply_item {oid} for {do}')
+        
+        return self.set_item_state(user_id,'APPLY',oid,4,do=do)
     
     def set_item_state(self, operater_user_id=None, operation=None,\
                         oid=None, useable=None, wis=None, do=None):
@@ -360,11 +360,12 @@ class ApiManagement(object):
                                  'userId':operater_user_id,
                                  'operation':operation,
                                  'object':oid,
-                                 })
-        self.sql.update('item_info', ('id',oid), 
-                        {'useable':useable,
-                        'wis':wis,
-                        'do':do})
+                                 'do':do})
+        update_date = {}
+        update_date['useable'] = useable
+        update_date['wis'] = wis
+        self.sql.update('item_info', ('id',oid), update_date)
+        return 'success'
 
     def return_item(self, user_id, oid):
         try:

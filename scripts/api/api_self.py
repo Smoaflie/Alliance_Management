@@ -30,8 +30,8 @@ def format_with_margin(s, margin, assign_full_width_num=None):
     else:
         full_width_num = assign_full_width_num - full_width if assign_full_width_num>full_width else 0
         half_width_num = margin-((full_width_num+full_width)*2+half_width) if margin>(full_width_num+full_width)*2+half_width else 0
-    # 使用全角空格+半角空格填充
-    return s + '\u3000' * full_width_num + " " * half_width_num
+    # 使用全角空格+数样间距 (figure space)填充
+    return s + '\u3000' * full_width_num + "\u2007" * half_width_num
 
 def is_valid(sstr, errors):
     voidc = ["'", '"', '\\', '<', '>', '(', ')', '.', '=']

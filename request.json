@@ -1,9 +1,9 @@
 {
     "schema": "2.0",
     "header": {
-        "event_id": "5bc600a15772bb5e8e40be47b4aa7965",
+        "event_id": "b3e9c3ff386e5098269362f8f7efdd73",
         "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-        "create_time": "1728154304939129",
+        "create_time": "1728219609927143",
         "event_type": "card.action.trigger",
         "tenant_key": "15874fbe83c4d75f",
         "app_id": "cli_a6687b8d5973100b"
@@ -15,40 +15,24 @@
             "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
             "union_id": "on_39c045cdfce9993e11416da69de0d585"
         },
-        "token": "c-d4e19bc6ac7e2af90cbce1566d4e32012caef8bb",
+        "token": "c-f367a2d742125ab58fba15831c05ca02fe06f479",
         "action": {
             "value": {
-                "id": "1007",
+                "id": "1001",
                 "name": "object.inspect",
-                "object_param_1": "1007",
-                "object_param_2": "图传发送端",
-                "object_param_3": "1",
+                "object_param_1": "1001",
+                "object_param_2": "小装甲板",
+                "object_param_3": "13",
                 "selectedObjectList": {
-                    "name": [
-                        "达妙板子",
-                        "达妙板子",
-                        "达妙usb2can",
-                        "达妙usb2can",
-                        "遥控器",
-                        "中心板",
-                        "中心板"
-                    ],
-                    "oid": [
-                        "3004003",
-                        "3004002",
-                        "3005003",
-                        "3005001",
-                        "3008001",
-                        "3001004",
-                        "3001003"
-                    ]
+                    "name": [],
+                    "oid": []
                 }
             },
             "tag": "button"
         },
         "host": "im_message",
         "context": {
-            "open_message_id": "om_fd629296b9f85db1940b9384256e0ca6",
+            "open_message_id": "om_b7be5c0001ff0d77c333cf8bd874e55f",
             "open_chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad"
         }
     }
