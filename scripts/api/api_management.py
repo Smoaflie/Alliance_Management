@@ -231,7 +231,7 @@ class ApiManagement(object):
             new_id = (1000*name_id) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
             for i in range(int(num) if num else 1):
                 # 设置Id，进行添加
-                insert_data['id'] = name_id + i
+                insert_data['id'] = name_id*1000 + i
                 self.sql.insert('item_info', insert_data)
             if num_broken:
                 for i in range(num_broken):

@@ -424,7 +424,6 @@ def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入
 @app.before_first_request
 def getItemsBySheets(): #从电子表格中获取物品数量
     #校验修改时间，检测是否有变化
-    #TODO:HERE ERROR
     try:
         DocMetadata = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
         if not DocMetadata:
