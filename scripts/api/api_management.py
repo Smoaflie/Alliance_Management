@@ -374,12 +374,11 @@ class ApiManagement(object):
             item_info = self.get_item(oid)
         except Exception as e:
             return f"Error: {e}"
-        
         if item_info['useable'] == '报废':
             return "Error: 它已经报废了，你真的要放进仓库吗"
         if item_info['useable'] == '申请中':
             return "Error: 该物品正在被申请，请先进行审批"
-        if item_info['wis'] != member['name'] and not member['root']:
+        if item_info['wis'][0] != member['name'] and not member['root']:
             return "Error: 你不是该物品的持有者"
         else:
             self.set_item_state(operater_user_id=user_id,operation='RETURN',\
