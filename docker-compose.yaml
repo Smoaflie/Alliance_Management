@@ -38,8 +38,6 @@ services:
       - "6379:6379"
     container_name:
       management-redis
-    depends_on:
-      - mysql
     networks:
       - management-network
 
@@ -53,6 +51,7 @@ services:
     depends_on:
       - mysql
       - redis
+      - server
     command: sh -c "celery -A server.celery worker --loglevel=info"
     container_name:
       management-server-celery

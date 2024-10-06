@@ -425,7 +425,7 @@ class ApiManagement(object):
 
     def fetch_contact_md5(self):
         result = self.sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
-        return result[1]
+        return result[1] if result else None
     
     def update_contact_md5(self,contact_md5):
         if not self.fetch_contact_md5():
@@ -434,7 +434,7 @@ class ApiManagement(object):
 
     def fetch_itemSheet_md5(self):
         result = self.sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
-        return result[1]
+        return result[1] if result else None
     
     def update_itemSheet_md5(self,itemSheet_md5):
         if not self.fetch_itemSheet_md5():
