@@ -1,39 +1,23 @@
 {
     "schema": "2.0",
     "header": {
-        "event_id": "7181cb5e51488fe4a1ee707fd467ea32",
+        "event_id": "2a26d10a0b3aa4c40955b127ca8ccc99",
         "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-        "create_time": "1728224301574384",
-        "event_type": "card.action.trigger",
+        "create_time": "1728228459000",
+        "event_type": "application.bot.menu_v6",
         "tenant_key": "15874fbe83c4d75f",
         "app_id": "cli_a6687b8d5973100b"
     },
     "event": {
+        "event_key": "custom_menu.test",
         "operator": {
-            "tenant_key": "15874fbe83c4d75f",
-            "user_id": "f1549d18",
-            "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
-            "union_id": "on_39c045cdfce9993e11416da69de0d585"
-        },
-        "token": "c-0c2628d7478c30100e52dc42235c2f8173776ad5",
-        "action": {
-            "value": {
-                "selectedObjectList": {
-                    "name": [],
-                    "oid": []
-                }
+            "operator_id": {
+                "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
+                "union_id": "on_39c045cdfce9993e11416da69de0d585",
+                "user_id": "f1549d18"
             },
-            "tag": "button",
-            "timezone": "Asia\/Shanghai",
-            "form_value": {
-                "Input_value": ""
-            },
-            "name": "form_button"
+            "operator_name": "杨晨翔"
         },
-        "host": "im_message",
-        "context": {
-            "open_message_id": "om_2d212a65c5b9ae6873296e46083304d2",
-            "open_chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad"
-        }
+        "timestamp": 1728228459
     }
 }

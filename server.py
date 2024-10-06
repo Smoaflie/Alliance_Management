@@ -147,7 +147,8 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
         content = create_messageInteractive(object_id='0')
         update_messageInteractive(user_id, content)
     elif event_key == 'custom_menu.test':
-        management.del_all()
+        # DocMetadata = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
+        # DEBUG_OUT(DocMetadata)
         # content = create_messageInteractive(object_id='0')
         # update_messageInteractive(user_id, content)
         pass
@@ -312,77 +313,6 @@ def callback_event_handler():
     # 运行协程并返回响应
     return event_handler(event)
 
-# @app.before_first_request
-# def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入members表中
-#     try:
-#         user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
-#         #校验md5值，检测是否有变化
-#         list_string = ''.join(map(str, user_ids))
-#         MD5remote = hashlib.md5()
-#         MD5remote.update(list_string.encode('utf-8'))
-#         MD5remote = MD5remote.hexdigest()
-
-#         MD5local = management.fetch_contact_md5()
-
-#         if MD5local != MD5remote:
-#             items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
-#             user_list = list()
-#             for item in items:
-#                 user_list.append({
-#                     'name':item['name'],
-#                     'user_id':item['user_id']
-#                 })
-#             management.add_member_batch(user_list)
-#             management.update_contact_md5(MD5remote)
-#             logging.info("add members from contact.")
-#         else:
-#             logging.info("skip add members from contact.")
-#     except Exception as e:
-#         raise Exception(f"尝试通过通讯录初始化用户列表失败，请重试\n{e}")
-
-# @app.before_first_request
-# def getItemsBySheets(): #从电子表格中获取物品信息
-#     #校验修改时间，检测是否有变化
-#     #TODO:HERE ERROR
-#     try:
-#         DocMetadata = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
-#         if not DocMetadata:
-#             raise Exception(f"ITEM_SHEET_TOKEN:{ITEM_SHEET_TOKEN} 无法找到")
-        
-#         latest_modify_time_remote = DocMetadata[0].get('latest_modify_time') #取[0]是因为使用token只会搜到一个文件
-#         latest_modify_time_local = management.fetch_itemSheet_md5()
-
-#         #如果物资表修改过（数据库数据过时），重新初始化物资数据库
-#         if latest_modify_time_local != latest_modify_time_remote:
-#             sheet_date =  spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{SHEET_ID_TOTAL}!A2:D")
-#             if not sheet_date.get('data'):
-#                 raise Exception(f"SHEET_ID_TOTAL:{SHEET_ID_TOTAL} 无法找到")
-            
-#             item_list = sheet_date.get('data').get('valueRange').get('values')
-#             logging.info('add item by sheet')
-#             for item in item_list:
-#                 category_name = item[0]
-#                 item_name = item[1]
-#                 item_num_total = item[2] if item[2] else 1
-#                 item_num_broken = item[3] if item[3] else 0
-#                 management.add_items_until_limit(name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
-#             itemSheet_md5 = hashlib.md5().update(latest_modify_time_remote.encode('utf-8'))
-#             management.update_itemSheet_md5(itemSheet_md5)
-#         else:
-#             logging.info('skip add item by sheet')
-#     except Exception as e:
-#         raise Exception(f"{e}\n如需通过电子表格初始化数据库，请创建一个电子表格，按格式填入值后，确认`settings.json`中['sheet']:['token']和['sheet_id_TOTAL']是否正确。否则注释掉getItemsBySheets()")
-
-# @app.before_first_request
-# def subApprovalEvent(): #订阅审批事件
-    #只能订阅一次，因此第一次初始化后会一直弹subscription existed异常（已捕获）
-    #确认订阅成功后，你完全可以注释掉它
-    try:
-        approval_api_event.subscribe(APPROVAL_CODE)
-        logging.info(f"成功订阅审批事件{APPROVAL_CODE}")
-    except:
-        logging.info("subApprovalEvent() 只能订阅一次，因此你完全可以注释掉它")
-
 @app.errorhandler
 def msg_error_handler(ex):
     logging.error(ex)
@@ -391,7 +321,6 @@ def msg_error_handler(ex):
         ex.response.status_code if isinstance(ex, requests.HTTPError) else 500
     )
     return response
-
 
 @app.before_first_request
 def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入members表中
@@ -443,11 +372,11 @@ def getItemsBySheets(): #从电子表格中获取物品数量
             for item in item_list:
                 category_name = item[0]
                 item_name = item[1]
-                item_num_total = item[2] if item[2] else 1
+                item_num_total = item[2] if item[2] else 0
                 item_num_broken = item[3] if item[3] else 0
                 management.add_items_until_limit(name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
-            itemSheet_md5 = hashlib.md5().update(latest_modify_time_remote.encode('utf-8'))
-            management.update_itemSheet_md5(itemSheet_md5)
+            #虽然函数名是转换成md5，但不转也能直接用
+            management.update_itemSheet_md5(latest_modify_time_remote)
         else:
             logging.info('skip add item by sheet')
     except Exception as e:

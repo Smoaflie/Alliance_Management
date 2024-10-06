@@ -7,12 +7,12 @@
         "port": "3306"
     },
     "sheet": {
-        "token": "",
-        "sheet_id_TOTAL": "",
-        "sheet_id_ITEM": ""
+        "token": "KlYDsOIVphwX8ItaJ90cf156n0s",
+        "sheet_id_TOTAL": "3e1df5",
+        "sheet_id_ITEM": "eGygaA"
     },
     "approval": {
-        "approval_code": ""
+        "approval_code": "83CEE9CB-A6D5-4501-B509-4F53D7EBC1D9"
     },
     "redis": {
         "host":"redis",
