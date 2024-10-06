@@ -1,9 +1,9 @@
 {
     "schema": "2.0",
     "header": {
-        "event_id": "b3e9c3ff386e5098269362f8f7efdd73",
+        "event_id": "7181cb5e51488fe4a1ee707fd467ea32",
         "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-        "create_time": "1728219609927143",
+        "create_time": "1728224301574384",
         "event_type": "card.action.trigger",
         "tenant_key": "15874fbe83c4d75f",
         "app_id": "cli_a6687b8d5973100b"
@@ -15,24 +15,24 @@
             "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
             "union_id": "on_39c045cdfce9993e11416da69de0d585"
         },
-        "token": "c-f367a2d742125ab58fba15831c05ca02fe06f479",
+        "token": "c-0c2628d7478c30100e52dc42235c2f8173776ad5",
         "action": {
             "value": {
-                "id": "1001",
-                "name": "object.inspect",
-                "object_param_1": "1001",
-                "object_param_2": "小装甲板",
-                "object_param_3": "13",
                 "selectedObjectList": {
                     "name": [],
                     "oid": []
                 }
             },
-            "tag": "button"
+            "tag": "button",
+            "timezone": "Asia\/Shanghai",
+            "form_value": {
+                "Input_value": ""
+            },
+            "name": "form_button"
         },
         "host": "im_message",
         "context": {
-            "open_message_id": "om_b7be5c0001ff0d77c333cf8bd874e55f",
+            "open_message_id": "om_2d212a65c5b9ae6873296e46083304d2",
             "open_chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad"
         }
     }

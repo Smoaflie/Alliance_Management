@@ -1,22 +1,21 @@
 {
     "mysql": {
-        "host": "172.18.0.2",
+        "host": "mysql",
         "user": "root",
         "password": "mysql",
         "db": "managementDatabase",
         "port": "3306"
     },
-    "group":"s",
     "sheet": {
-        "token": "KlYDsOIVphwX8ItaJ90cf156n0s",
-        "sheet_id_TOTAL": "3e1df5",
-        "sheet_id_ITEM": "eGygaA"
+        "token": "",
+        "sheet_id_TOTAL": "",
+        "sheet_id_ITEM": ""
     },
     "approval": {
-        "approval_code": "83CEE9CB-A6D5-4501-B509-4F53D7EBC1D9"
+        "approval_code": ""
     },
     "redis": {
-        "host":"localhost",
+        "host":"redis",
         "port": 6379,
         "db":0
     }
