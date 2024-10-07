@@ -1,13 +1,11 @@
-import pymysql
 import logging
+import pymysql
+
 from functools import wraps
 from dbutils.pooled_db import PooledDB
 
-class MySqlError(Exception):
-    def __init__(self, arg):
-        self.args = arg
-
-def log_errors(func): #使用装饰器来记录异常
+def log_errors(func):
+    """记录异常的装饰器."""
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         try:
@@ -18,8 +16,11 @@ def log_errors(func): #使用装饰器来记录异常
     return wrapper
 
 class MySql:
-    def __init__(self, Info):
-        self.Info = Info
+    """基于pymysql和Dbutils的Mysql连接池类."""
+
+    def __init__(self, info):
+        """通过info配置初始化Mysql实例."""
+        self.info = info
         # 创建连接池
         self.pool = PooledDB(
             creator=pymysql,  # 使用 PyMySQL 连接
@@ -28,16 +29,17 @@ class MySql:
             maxcached=5,          # 连接池中最多空闲连接数
             maxshared=3,          # 连接池中最多共享连接数
             blocking=True,        # 连接池中如果没有可用连接后是否阻塞
-            host=self.Info['host'], 
-            user=self.Info['user'], 
-            passwd=self.Info['password'], 
-            db=self.Info['db'],
-            port=int(self.Info['port']), 
+            host=self.info['host'], 
+            user=self.info['user'], 
+            passwd=self.info['password'], 
+            db=self.info['db'],
+            port=int(self.info['port']), 
             charset='utf8'
         )
 
     @log_errors
-    def fetchone(self, table, key, value):
+    def fetchone(self, table: str, key: str, value: str) -> list:
+        """获取一条数据(精确搜索)."""
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} = %s"
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
@@ -45,7 +47,8 @@ class MySql:
                 return cursor.fetchone()
         
     @log_errors
-    def fetchone_like(self, table, key, value):
+    def fetchone_like(self, table: str, key: str, value: str) -> list:
+        """获取一条数据(模糊搜索)."""
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} LIKE %s"
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
@@ -53,7 +56,8 @@ class MySql:
                 return cursor.fetchone()
             
     @log_errors
-    def fetchall(self, table, key, value):
+    def fetchall(self, table: str, key: str, value: str) -> list:
+        """获取多条数据(精确搜索)."""
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} = %s"
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
@@ -61,7 +65,8 @@ class MySql:
                 return cursor.fetchall()
             
     @log_errors
-    def fetchall_like(self, table, key, value):
+    def fetchall_like(self, table: str, key: str, value: str) -> list:
+        """获取多条数据(模糊搜索)."""
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} LIKE %s"
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
@@ -69,22 +74,25 @@ class MySql:
                 return cursor.fetchall()
 
     @log_errors
-    def gettable(self):
+    def gettable(self) -> list:
+        """获取当前数据库中的所有表."""
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SHOW TABLES")
                 return cursor.fetchall()
         
     @log_errors
-    def getall(self, table):
-        sql = "SELECT * from %s" % table
+    def getall(self, table: str) -> list:
+        """获取表table的全部数据."""
+        sql = f"SELECT * FROM {table}"
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql)
                 return cursor.fetchall()
 
     @log_errors
-    def insert(self, table, data):
+    def insert(self, table: str, data: dict) -> None:
+        """向表table插入数据data."""
         keys = data.keys()
         values = tuple(data.values())
 
@@ -98,9 +106,14 @@ class MySql:
                 conn.commit()
 
     @log_errors
-    def update(self, table, key, updates):
+    def update(
+        self,
+        table: str,
+        key: tuple,
+        updates: dict
+    ) -> None:
         """
-        更新表中的多个字段。
+        更新表中的多个字段.
 
         :param table: 表名
         :param key: 用于查找记录的键，格式为 (key_column, key_value)
@@ -121,7 +134,13 @@ class MySql:
                 conn.commit()
         
     @log_errors
-    def delete(self, table, key=None, value=None):
+    def delete(
+        self,
+        table: str,
+        key: tuple = None,
+        value=None
+    ) -> None:
+        """删除表中数据."""
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
                 if key and value:
@@ -133,7 +152,8 @@ class MySql:
                 conn.commit()
     
     @log_errors
-    def getchecksum(self, table):
+    def getchecksum(self, table: str) -> list:
+        """获取表table的校验和."""
         sql = f"CHECKSUM TABLE {table}"
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
@@ -141,5 +161,6 @@ class MySql:
                 return cursor.fetchall()
         
     def __del__(self):
+        """清理连接池."""
         if self.pool:
-            self.pool.close()  # 清理连接池
+            self.pool.close() 

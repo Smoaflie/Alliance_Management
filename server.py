@@ -7,7 +7,7 @@ from scripts.api.api_event import MessageReceiveEvent, UrlVerificationEvent, Eve
 from flask import Flask, jsonify, request
 from dotenv import load_dotenv, find_dotenv
 from scripts.api.api_management import ApiManagement
-from scripts.api import api_mysql as mysql
+from scripts.api import mysql_connector as mysql
 from scripts.api.api_self import DEBUG_OUT,format_with_margin,can_convert_to_int,replace_placeholders
 import ujson
 from datetime import datetime

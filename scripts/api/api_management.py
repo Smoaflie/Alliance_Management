@@ -1,4 +1,4 @@
-from . import api_mysql 
+from . import mysql_connector 
 import hashlib
 import ujson
 import time
@@ -18,7 +18,7 @@ class ApiManagement(object):
         5: '未知'
     }
     
-    def __init__(self, sql : api_mysql.MySql):
+    def __init__(self, sql : mysql_connector.MySql):
         self.sql = sql
 
     
@@ -374,16 +374,16 @@ class ApiManagement(object):
             item_info = self.get_item(oid)
         except Exception as e:
             return f"Error: {e}"
-        if item_info['useable'] == '报废':
+        if item_info['useable'][0] == '报废':
             return "Error: 它已经报废了，你真的要放进仓库吗"
-        if item_info['useable'] == '申请中':
+        if item_info['useable'][0] == '申请中':
             return "Error: 该物品正在被申请，请先进行审批"
         if item_info['wis'][0] != member['name'] and not member['root']:
             return "Error: 你不是该物品的持有者"
         else:
             self.set_item_state(operater_user_id=user_id,operation='RETURN',\
                                 oid=oid,useable=1,wis='仓库',do='null')
-            return f'你{"帮忙" if member['root'] else ""}归还了物品 {item_info['name']} oid:{oid}'
+            return f'你{"帮忙" if member['root'] else ""}归还了物品 {item_info['name'][0]} oid:{oid}'
 
     def update_card(self, user_id, message_id=None, create_time=None): #更新用户和对应的信息卡片信息
         if message_id and create_time:
