@@ -4,7 +4,7 @@ import pymysql
 from functools import wraps
 from dbutils.pooled_db import PooledDB
 
-def log_errors(func):
+def _log_errors(func):
     """记录异常的装饰器."""
     @wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -37,8 +37,8 @@ class MySql:
             charset='utf8'
         )
 
-    @log_errors
-    def fetchone(self, table: str, key: str, value: str) -> list:
+    @_log_errors
+    def fetchone(self, table: str, key: str, value: str | int) -> list:
         """获取一条数据(精确搜索)."""
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} = %s"
         with self.pool.connection() as conn:
@@ -46,8 +46,8 @@ class MySql:
                 cursor.execute(sql,(value,))
                 return cursor.fetchone()
         
-    @log_errors
-    def fetchone_like(self, table: str, key: str, value: str) -> list:
+    @_log_errors
+    def fetchone_like(self, table: str, key: str, value: str | int) -> list:
         """获取一条数据(模糊搜索)."""
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} LIKE %s"
         with self.pool.connection() as conn:
@@ -55,8 +55,8 @@ class MySql:
                 cursor.execute(sql,(f"%{value}%",))
                 return cursor.fetchone()
             
-    @log_errors
-    def fetchall(self, table: str, key: str, value: str) -> list:
+    @_log_errors
+    def fetchall(self, table: str, key: str, value: str | int) -> list:
         """获取多条数据(精确搜索)."""
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} = %s"
         with self.pool.connection() as conn:
@@ -64,8 +64,8 @@ class MySql:
                 cursor.execute(sql,(value,))
                 return cursor.fetchall()
             
-    @log_errors
-    def fetchall_like(self, table: str, key: str, value: str) -> list:
+    @_log_errors
+    def fetchall_like(self, table: str, key: str, value: str | int) -> list:
         """获取多条数据(模糊搜索)."""
         sql = f"SELECT SQL_NO_CACHE * FROM {table} WHERE {key} LIKE %s"
         with self.pool.connection() as conn:
@@ -73,7 +73,7 @@ class MySql:
                 cursor.execute(sql,(f"%{value}%",))
                 return cursor.fetchall()
 
-    @log_errors
+    @_log_errors
     def gettable(self) -> list:
         """获取当前数据库中的所有表."""
         with self.pool.connection() as conn:
@@ -81,7 +81,7 @@ class MySql:
                 cursor.execute("SHOW TABLES")
                 return cursor.fetchall()
         
-    @log_errors
+    @_log_errors
     def getall(self, table: str) -> list:
         """获取表table的全部数据."""
         sql = f"SELECT * FROM {table}"
@@ -90,7 +90,7 @@ class MySql:
                 cursor.execute(sql)
                 return cursor.fetchall()
 
-    @log_errors
+    @_log_errors
     def insert(self, table: str, data: dict) -> None:
         """向表table插入数据data."""
         keys = data.keys()
@@ -105,7 +105,7 @@ class MySql:
                 cursor.execute(sql,values)
                 conn.commit()
 
-    @log_errors
+    @_log_errors
     def update(
         self,
         table: str,
@@ -115,9 +115,11 @@ class MySql:
         """
         更新表中的多个字段.
 
-        :param table: 表名
-        :param key: 用于查找记录的键，格式为 (key_column, key_value)
-        :param updates: 更新字段及其新值的字典，例如 {'column1': 'new_value1', 'column2': 'new_value2'}
+        Args:
+            table: 表名
+            key: 用于查找记录的键，格式为 (key_column, key_value)
+            updates: 更新字段及其新值的字典，例如 {'column1': 'new_value1',
+                'column2': 'new_value2'}
         """
         # 处理更新的字段，使用占位符
         set_clause = ', '.join([f"{col} = %s" for col in updates.keys()])
@@ -133,14 +135,22 @@ class MySql:
                 cursor.execute(sql, values)
                 conn.commit()
         
-    @log_errors
+    @_log_errors
     def delete(
         self,
         table: str,
         key: tuple = None,
         value=None
     ) -> None:
-        """删除表中数据."""
+        """
+        删除表中数据.
+        
+        Args:
+            table: 表名
+            key: 用于查找记录的键，格式为 (key_column, key_value)
+            updates: 更新字段及其新值的字典，例如 {'column1': 'new_value1',
+                'column2': 'new_value2'}
+        """
         with self.pool.connection() as conn:
             with conn.cursor() as cursor:
                 if key and value:
@@ -151,7 +161,7 @@ class MySql:
                     cursor.execute(sql)
                 conn.commit()
     
-    @log_errors
+    @_log_errors
     def getchecksum(self, table: str) -> list:
         """获取表table的校验和."""
         sql = f"CHECKSUM TABLE {table}"

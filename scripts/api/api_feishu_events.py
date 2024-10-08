@@ -1,15 +1,31 @@
 #!/usr/bin/env python3.8
 
-import ujson
 import abc
+import ujson
 import hashlib
 import typing as t
 from scripts.utils import dict_2_obj
-from flask import request, jsonify
+from flask import request
 from scripts.decrypt import AESCipher
 
-#TODO check:图省事，将事件和回调写在一起，也许部分地方一些区别（find:@)
+"""
+该模块用于订阅飞书事件/回调.
+
+只需要按步骤添加：
+定义接收的事件/回调 class nameEvent(Event)
+    格式参考 MessageReceiveEvent
+在EventManager._event_list内中添加新事件/回调类名
+
+使用:
+import事件/回调对应的类(EventClass)，使用装饰器
+@event_manager.register("event.name")
+    例子：
+    @event_manager.register("im.message.receive_v1")
+    def message_receive_event_handler(req_data: MessageReceiveEvent):
+"""
+
 class Event(object):
+    """事件基类"""
     callback_handler = None
 
     # event base
@@ -65,7 +81,6 @@ class ApprovalInstanceEvent(Event):
         return "approval_instance"
 
 class UrlVerificationEvent(Event):
-
     # special event: url verification event
     def __init__(self, dict_data):
         self.event = dict_2_obj(dict_data)
@@ -74,11 +89,19 @@ class UrlVerificationEvent(Event):
     def event_type():
         return "url_verification"
 
-
 class EventManager(object):
+    """事件管理"""
+
     event_callback_map = dict()
     event_type_map = dict()
-    _event_list = [MessageReceiveEvent, UrlVerificationEvent, BotMenuClickEvent, CardActionEvent, ApprovalInstanceEvent]
+    #在这里添加要订阅的 事件/回调 类
+    _event_list = [
+        MessageReceiveEvent, 
+        UrlVerificationEvent, 
+        BotMenuClickEvent, 
+        CardActionEvent, 
+        ApprovalInstanceEvent
+    ]
 
     def __init__(self):
         for event in EventManager._event_list:

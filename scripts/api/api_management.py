@@ -1,14 +1,12 @@
-from . import mysql_connector 
 import hashlib
-import ujson
-import time
 import logging
+import time
 
-'''
-TODO:测试下所有接口对错误类型的输入会不会产生错误
-'''
+from scripts.api import api_mysql_connector
 
 class ApiManagement(object):
+    """物资数据库操作的接口类"""
+    # 物资状态对应表,物资状态在数据库中是用int存储的
     useable_map = {
         1: '可用',
         0: '已借出',
@@ -18,11 +16,21 @@ class ApiManagement(object):
         5: '未知'
     }
     
-    def __init__(self, sql : mysql_connector.MySql):
-        self.sql = sql
+    def __init__(self, info : dict):
+        """通过info数据初始化sql连接池"""
+        self.sql = api_mysql_connector.MySql(info)
 
     
-    def get_category(self):
+    def get_categories(self) -> dict:
+        """
+        获取仓库内所有物品种类
+        
+        Return:
+            一个字典
+            {b'id':  (1,2)    类型id,
+             b'name':('裁判系统','电机') 类型名, 
+             b'total':(10,19) 该类型下物资总数}
+        """
         info = self.sql.getall('item_category')
         r = {'id': [], 'name': [], 'total': []}
         for it in info:
@@ -31,21 +39,92 @@ class ApiManagement(object):
             r['total'].append(it[2])
         return r
     
-    def get_list(self, category_id=None, name=None, name_id=None):
+    def get_category(
+            self,
+            category_id: int | None = None, 
+            category_name: str | None = None, 
+        ) -> dict[str, list]:
+        """
+        获取仓库内符合条件的物品种类
+        
+        Args:
+            category_id: 物品类型id
+            category_name: 物品类型名,精确搜索
+
+        Return:
+            {b'id':  (1,2)    类型id,
+             b'name':('裁判系统','电机') 类型名, 
+             b'total':(10,19) 该类型下物资总数}
+
+        raise:
+            ValueError: 缺少必要参数或无法根据条件找到类型时raise
+        """
+        if category_id:
+            info = self.sql.fetchall('item_category', 'father', category_id)
+            if not info:
+                raise ValueError(f"{__name__}无法通过category_id:{category_id}找到目标类型")
+        elif category_name:
+            info = self.sql.fetchall('item_category', 'name', category_name)
+            if not info:
+                raise ValueError(f"{__name__}无法通过category_name:{category_name}找到目标类型")
+        else:
+            raise ValueError(f"{__name__}缺少必要的参数")
+        
+        
+        r = {'id': [], 'name': [], 'total': []}
+        for it in info:
+            r['id'].append(it[0])
+            r['name'].append(it[1])
+            r['total'].append(it[2])
+        return r
+    
+    def get_list(
+            self, 
+            category_id: int | None = None, 
+            category_name: str | None = None, 
+            name: str | None = None, 
+            name_id: int | None = None
+        ) -> dict[str, list]:
+        """
+        获取仓库内符合要求的物品信息(简略)
+        
+        Args:
+            category_id: 物品类型id
+            category_name: 物品类型名,精确搜索
+            name: 物品名
+            name_id: 物品名id
+        
+        Return:
+            {
+                b'id':  (1001,1002)    物品名id
+                b'father': (1,1)   父类型id
+                b'name':('小装甲板','大装甲板') 物品名 
+                b'total':(10,19) 该物品名下物品总数
+                b'free':(10,19) 该物品名下可用的物品总数
+            }
+
+        raise:
+            ValueError: 缺少必要参数或无法根据条件找到物品信息时raise
+        """
         if category_id:
             info = self.sql.fetchall('item_list', 'father', int(category_id))
             if not info:
-                raise Exception(f"无法找到目标物品 category_id:{category_id}")
+                raise ValueError(f"无法找到目标物品 category_id:{category_id}")
+        elif category_name:
+            category_id = self.get_category(category_name=category_name).get['id'][0]
+            info = self.sql.fetchall('item_list', 'father', int(category_id))
+            if not info:
+                raise ValueError(f"无法找到目标物品 category_name:{category_name}")
         elif name:
             info = self.sql.fetchall_like('item_list', 'name', name)
             if not info:
-                raise Exception(f"无法找到目标物品 name:{name}")
+                raise ValueError(f"无法找到目标物品 name:{name}")
         elif name_id:
             info = self.sql.fetchall('item_list', 'id', name_id)
             if not info:
-                raise Exception(f"无法找到目标物品 name_id:{name_id}")
+                raise ValueError(f"无法找到目标物品 name_id:{name_id}")
         else:
-            raise Exception(f"{__name__} 缺少参数")
+            raise ValueError(f"{__name__} 缺少必要的参数")
         
         
         r = {'id': [], 'father': [], 'name': [], 'total': [], 'free': []}
@@ -57,7 +136,31 @@ class ApiManagement(object):
             r['free'].append(it[4])
         return r
     
-    def return_itemTable_by_info(self, info, name=None):
+    def _return_itemTable_by_info(
+            self, 
+            info: list, 
+            name: str | None = None
+        ) -> dict[str,list] :
+        """
+        将物品详细信息格式化成统一格式
+
+        由于物品详细信息的表中没有存物品名的列，输出字典中['name']默认为空
+            如果有需要，需手动设置 name值
+        
+        Args:
+            info: mysql返回的存有物品详细信息的列表
+            name: 手动设置物品名
+        
+        Return:
+            {
+                'name': 物品名
+                'id':   物品id
+                'father': 物品名id
+                'useable': 物品状态，具体内容参考`useable_map`
+                'wis': 物品当前位置
+                'do': 物品备注，标示该物品的特点(比如'CAN口损坏'的主控板)
+            }
+        """
         r = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': []}
         
         
@@ -80,6 +183,19 @@ class ApiManagement(object):
         return r
     
     def get_all(self):
+        """
+        获取数据库内的全部物资信息(详情)
+
+        Return:
+            {
+                'name': None
+                'id':   物品id
+                'father': 物品名id
+                'useable': 物品状态，具体内容参考`useable_map`
+                'wis': 物品当前位置
+                'do': 物品备注，标示该物品的特点(比如'CAN口损坏'的主控板)
+            }
+        """
         info = []
         groups = self.sql.getall('item_category')
         for group in groups:
@@ -88,83 +204,139 @@ class ApiManagement(object):
             for it in d:
                 if it not in info:
                     info.append(it)
-        return self.return_itemTable_by_info(info) if info else None
+        return self._return_itemTable_by_info(info) if info else None
 
-    def get_item(self, oid):
-        info = self.sql.fetchone('item_info', 'id', int(oid))
+    def get_item(self, oid: int) -> dict[str, list]:
+        """
+        获取某个物品的详细信息
+        
+        Args:
+            oid:    物品id
+        
+        Return:
+            {
+                'name': 物品名
+                'id':   物品id
+                'father': 物品名id
+                'useable': 物品状态，具体内容参考`useable_map`
+                'wis': 物品当前位置
+                'do': 物品备注，标示该物品的特点(比如'CAN口损坏'的主控板)
+            }
+        
+        raise:
+            ValueError: 无法找到对应oid的物品时抛出
+        """
+        info = self.sql.fetchone('item_info', 'id', oid)
         if info:
             father = self.sql.fetchone('item_list', 'id', info[1])
-            return self.return_itemTable_by_info(info, father[2])
+            return self._return_itemTable_by_info(info, father[2])
         else:
-            raise Exception(f"无法找到目标物品 oid:{str(oid)}") if info else None
+            raise ValueError(f"无法找到目标物品 oid:{str(oid)}") if info else None
 
-    def get_items(self, name_id=None, name=None):
-        if not (name_id or name):
-            raise Exception("参数错误")
-        if name:
-            father = self.sql.fetchone('item_list', 'name', name)
-        else:
-            father = self.sql.fetchone('item_list', 'id', int(name_id))
+    def get_items(
+            self, 
+            name_id: int | None = None, 
+            name: str | None = None,
+            user_id: str | None = None,
+            user_name: str | None = None
+        ) -> dict[str, list]:
+        """
+        获取符合条件的物品的详细信息
         
-        if not father:
+        Args:
+            name_id:    物品名id
+            name:   物品名
+            user_id: 持有者user_id
+            user_name: 持有者用户名
+        
+        Return:
+            {
+                'name': 物品名
+                'id':   物品id
+                'father': 物品名id
+                'useable': 物品状态，具体内容参考`useable_map`
+                'wis': 物品当前位置
+                'do': 物品备注，标示该物品的特点(比如'CAN口损坏'的主控板)
+            }
+        
+        raise:
+            ValueError: 缺少参数或无法根据条件找到目标物品时抛出
+        """
+        if name or name_id:
             if name:
-                raise Exception(f"无法找到目标物品 name:{name}")
+                father = self.sql.fetchone('item_list', 'name', name)
+                if not father:
+                    raise ValueError(f"无法找到目标物品 name:{name}")
             if name_id:
-                raise Exception(f"无法找到目标物品 name_id:{name_id}")
+                father = self.sql.fetchone('item_list', 'id', name_id)
+                if not father:
+                    raise ValueError(f"无法找到目标物品 name_id:{name_id}")
+                
+            name_id = father[0]
+            name = father[2]
 
-        name_id = father[0]
-        name = father[2]
+            info = self.sql.fetchall('item_info', 'father', name_id)
+            return self._return_itemTable_by_info(info, name=name)  if info else None
 
-        info = self.sql.fetchall('item_info', 'father', int(name_id))
-        return self.return_itemTable_by_info(info, name=name)  if info else None
-    
-    def get_member_items(self, user_id=None, user_name=None):
-        if not user_name:
-            if user_id:
+        elif user_id or user_name:
+            if user_id and not user_name:
                 user_name = self.get_member(user_id)['name']
-            else:
-                logging.error(f'缺少参数')
+            if not user_id:
+                raise ValueError(f"无法找到目标用户 user_id:{user_id}")
+            member_items = self.sql.fetchall('item_info','wis',user_name)
+            if not member_items:
+                raise ValueError(f"无法找到名下物品 user_name:{user_name}")
+            name_id_map = {}
+            member_items_out = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': []}
+            for item in member_items:
+                oid     = item[0]
+                name_id = str(item[1])
+
+                if name_id not in name_id_map:
+                    item_list = self.get_list(int(oid/1000000))
+                    for name_id_,name_ in zip(item_list['id'],item_list['name']):
+                        name_id_map[f'{name_id_}']=name_
+                name = name_id_map[name_id]
+
+                member_items_out['name'].append(name)
+                member_items_out['id'].append(oid)
+                member_items_out['father'].append(str(item[1]))
+                member_items_out['useable'].append(self.useable_map.get(item[2], '未知'))
+                member_items_out['wis'].append(item[3])
+                member_items_out['do'].append(item[4])
             
-        member_items = self.sql.fetchall('item_info','wis',user_name)
+            return member_items_out
+        else:
+            raise ValueError(f"{__name__}缺少必要的参数")
 
-        if not member_items:
-            return None
-
-        name_id_map = {}
-        member_items_out = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': []}
-        for item in member_items:
-            oid     = item[0]
-            name_id = str(item[1])
-
-            if name_id not in name_id_map:
-                item_list = self.get_list(int(oid/1000000))
-                for name_id_,name_ in zip(item_list['id'],item_list['name']):
-                    name_id_map[f'{name_id_}']=name_
-            name = name_id_map[name_id]
-
-            member_items_out['name'].append(name)
-            member_items_out['id'].append(oid)
-            member_items_out['father'].append(str(item[1]))
-            member_items_out['useable'].append(self.useable_map.get(item[2], '未知'))
-            member_items_out['wis'].append(item[3])
-            member_items_out['do'].append(item[4])
-        
-        return member_items_out
-
-
-    def add_member(self, user_id, user_name):
+    def add_member(self, user_id: str, user_name: str):
+        """添加用户"""
         if not self.get_member(user_id):
             ins = {
                 'user_id':user_id,
                 'name': user_name
             }
             self.sql.insert('members', ins)
-    def add_member_batch(self, user_list):
+    def add_member_batch(self, user_list: list):
+        """批量添加用户"""
         for user in user_list:
             if not self.sql.fetchone('members', 'user_id', user['user_id']):
                 self.sql.insert('members', user)
 
-    def get_member(self, user_id):
+    def get_member(self, user_id: str) -> dict[str, list]:
+        """"
+        获取用户信息
+
+        Return:
+            {
+                'user_id': 用户user_id
+                'name':    用户名
+                'root':    是否有管理员权限(int 0:无 1:有)
+            }
+        
+        raise:
+            ValueError: 无法找到目标用户时抛出
+        """
         member = self.sql.fetchone('members', 'user_id', user_id)
         if member:
             return {
@@ -173,9 +345,19 @@ class ApiManagement(object):
                 'root': member[2]
             }
         else:
-            raise Exception(f"无法找到目标用户 user_id:{user_id}")
+            raise ValueError(f"无法找到目标用户 user_id:{user_id}")
     
-    def get_members_root(self):
+    def get_members_root(self) -> dict[str, list]:
+        """"
+        获取所有管理员用户信息
+
+        Return:
+            {
+                'user_id': 用户user_id
+                'name':    用户名
+                'root':    是否有管理员权限(int 0:无 1:有)
+            }
+        """
         members = self.sql.fetchall('members', 'root', 1)
         result = []
         if members:
@@ -187,16 +369,49 @@ class ApiManagement(object):
                 })
         return result
         
-    def set_member_root(self, user_id):
+    def set_member_root(self, user_id: str):
+        """设置某个用户为管理员"""
         self.sql.update('members', ('user_id',user_id), {'root':1})
 
-    def set_member_unroot(self, user_id):
+    def set_member_unroot(self, user_id: str):
+        """取消某个用户的管理员权限"""
         self.sql.update('members', ('user_id',user_id), {'root':0})
 
-    def add_item(self, name_id=None, name=None,  \
-                  num=1, num_broken=None,\
-                  category_name=None, category_id=None, params=None,\
-                    oid=None,useable=None,wis=None,do=None):
+    def add_item(
+            self, 
+            name_id: int | None = None, 
+            name: str | None = None, 
+            num: int = 1, 
+            num_broken: int = 0,
+            category_name: str | None = None, 
+            category_id: int | None = None, 
+            params: dict | None = None,
+            oid: int | None = None,
+            useable: int | None = None,
+            wis: str | None = None,
+            do: str | None = None
+        ):
+        """
+        添加物品到数据库中
+
+        会根据传入参数尝试新建物品，如果父级不存在，会尝试新建父级
+
+        Args:
+            name_id:    物品名id
+            name:   物品名
+            num:    添加数量
+            num_broken: 添加的物品中损坏数量(<num)
+            category_name: 物品类型名
+            category_id:    物品类型id
+            params: 参数表，一个存储了上方参数的字典
+            oid:    物品oid,可以用于指定物品id
+            useable: 物品状态,参照useable_map,默认未知
+            wis:    物品位置，默认未知
+            do:     物品备注,默认无
+
+        raise:
+            ValueError: 传入参数不足以新建物品时抛出
+        """
         if params:
             name_id = params.get('name_id')
             num = params.get('num')
@@ -206,19 +421,19 @@ class ApiManagement(object):
             category_id = params.get('category_id')
 
         # 查找父记录
-        #TODO：无法添加同名物品到不同分类            
+        #TODO:无法添加同名物品到不同分类            
         if name_id:
             father_recoder = self.sql.fetchone('item_list', 'id', name_id)
         elif name:
             father_recoder = self.sql.fetchone('item_list', 'name', name)
         else:
-            raise Exception("缺少必要的参数")
+            raise ValueError("缺少必要的参数")
         
         if not father_recoder:
             if (category_name or category_id) and name:
                 name_id = self.add_list(category_name=category_name, category_id=category_id, name=name, params=params)
             else:
-                raise Exception(f"父记录list Id:{name_id if name_id else category_name} 未找到，且缺少参数无法新建，跳过插入")
+                raise ValueError(f"父记录list Id:{name_id if name_id else category_name} 未找到，且缺少参数无法新建，跳过插入")
         else:
             name_id = father_recoder[0]
 
@@ -244,12 +459,14 @@ class ApiManagement(object):
             self.sql.insert('item_info', insert_data)
 
     def add_items_until_limit(self, name_id=None, num=1, name=None, num_broken=None, category_name=None, category_id=None):
+        """
+        """
         if name_id:
             father_recoder = self.sql.fetchone('item_list', 'id', name_id)
         elif name:
             father_recoder = self.sql.fetchone('item_list', 'name', name)
         else:
-            raise Exception("缺少必要的参数")
+            raise ValueError("缺少必要的参数")
         if father_recoder:
             num = num - father_recoder[3] if num - father_recoder[3] > 0 else 0
             num_broken = num_broken - father_recoder[5] if num_broken - father_recoder[5] > 0 else 0

@@ -1,66 +1,73 @@
 #!/usr/bin/env python3.12.3
-import os
-import logging
-import requests
-from scripts.api.api_client import MessageApiClient, SpreadsheetApiClient, ContactApiClient, CloudApiClient, ApprovalApiClient
-from scripts.api.api_event import MessageReceiveEvent, UrlVerificationEvent, EventManager, BotMenuClickEvent, CardActionEvent, ApprovalInstanceEvent
-from flask import Flask, jsonify, request
-from dotenv import load_dotenv, find_dotenv
-from scripts.api.api_management import ApiManagement
-from scripts.api import mysql_connector as mysql
-from scripts.api.api_self import DEBUG_OUT,format_with_margin,can_convert_to_int,replace_placeholders
-import ujson
-from datetime import datetime
-import re
-import time
 import copy
-import threading
 import hashlib
-from functools import wraps
-from celery import Celery
+import logging
+import os
+import re
 import redis
+import time
+import ujson
+
+from datetime import datetime
+from dotenv import load_dotenv, find_dotenv
+from celery import Celery
+from flask import Flask
+from flask import jsonify
+from flask import request
+from functools import wraps
+from requests import HTTPError
+
+from scripts.utils import DEBUG_OUT
+from scripts.utils import format_with_margin
+from scripts.utils import can_convert_to_int
+from scripts.utils import replace_placeholders
+from scripts.api.api_management import ApiManagement
+from scripts.api.api_feishu_clients import MessageApiClient
+from scripts.api.api_feishu_clients import SpreadsheetApiClient
+from scripts.api.api_feishu_clients import ContactApiClient
+from scripts.api.api_feishu_clients import CloudApiClient
+from scripts.api.api_feishu_clients import ApprovalApiClient
+from scripts.api.api_feishu_events import MessageReceiveEvent
+from scripts.api.api_feishu_events import UrlVerificationEvent
+from scripts.api.api_feishu_events import EventManager
+from scripts.api.api_feishu_events import BotMenuClickEvent
+from scripts.api.api_feishu_events import CardActionEvent
+from scripts.api.api_feishu_events import ApprovalInstanceEvent
 
 '''
 init
 '''
+# 定义Flask实例
 app = Flask(__name__)
-def server_init():
-    global management,ITEM_SHEET_TOKEN, SHEET_ID_TOTAL, SHEET_ID_ITEM, APPROVAL_CODE,\
-          CARD_DISPLAY_JSON, CARD_DISPLAY_REPEAT_ELEMENTS_JSON,BUTTON_CONFIRM_JSON,\
-        FORM_JSON,REDIS_HOST,REDIS_PORT,REDIS_DB
-    logging.basicConfig(level=logging.INFO)
-    with open('settings.json', 'r') as f:
-        settings = ujson.loads(f.read())
-        # 连接mysql服务器
-        sql = mysql.MySql(settings['mysql'])
-        management = ApiManagement(sql)
-        ITEM_SHEET_TOKEN = settings.get('sheet').get('token')
-        SHEET_ID_TOTAL = settings.get('sheet').get('sheet_id_TOTAL')
-        SHEET_ID_ITEM = settings.get('sheet').get('sheet_id_ITEM')
-        APPROVAL_CODE = settings.get('approval').get('approval_code')
-        REDIS_HOST = settings.get('redis').get('host')
-        REDIS_PORT = settings.get('redis').get('port')
-        REDIS_DB = settings.get('redis').get('db')
-        
-    with open('message_card.json', 'r') as f:
-        card_json = ujson.loads(f.read())
-        CARD_DISPLAY_JSON = card_json.get('display')
-        CARD_DISPLAY_REPEAT_ELEMENTS_JSON = card_json.get('display_repeat_elements')
-        BUTTON_CONFIRM_JSON = card_json.get('button_confirm')
-        FORM_JSON = card_json.get('form')
-server_init()
+# 设置日志等级
+logging.basicConfig(level=logging.INFO)
+# 配置全局变量
+with open('settings.json', 'r') as f:
+    settings = ujson.loads(f.read())
+    management = ApiManagement(settings['mysql'])
+    ITEM_SHEET_TOKEN = settings.get('sheet').get('token')
+    SHEET_ID_TOTAL = settings.get('sheet').get('sheet_id_TOTAL')
+    SHEET_ID_ITEM = settings.get('sheet').get('sheet_id_ITEM')
+    APPROVAL_CODE = settings.get('approval').get('approval_code')
+    REDIS_HOST = settings.get('redis').get('host')
+    REDIS_PORT = settings.get('redis').get('port')
+    REDIS_DB = settings.get('redis').get('db')
+with open('message_card.json', 'r') as f:
+    card_json = ujson.loads(f.read())
+    CARD_DISPLAY_JSON = card_json.get('display')
+    CARD_DISPLAY_REPEAT_ELEMENTS_JSON = card_json.get('display_repeat_elements')
+    BUTTON_CONFIRM_JSON = card_json.get('button_confirm')
+    FORM_JSON = card_json.get('form')
 # 配置 Redis
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
 # 限制请求频率
 REQUEST_LIMIT = 1  # 限制的请求次数
 TIME_WINDOW = 3  # 时间窗口，单位为秒
 # 配置 Celery
 app.config['CELERY_BROKER_URL'] = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}'
 app.config['CELERY_RESULT_BACKEND'] = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}'
-
 celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
 celery.conf.update(app.config)
-        
 
 # load env parameters form file named .env
 load_dotenv(find_dotenv())
@@ -82,7 +89,8 @@ event_manager = EventManager()
 '''
 wraps
 '''
-def celery_task(func): #与celery.task装饰器配合,使函数被调用时始终作为后台任务
+def celery_task(func):
+    """与celery.task装饰器配合,使函数被调用时始终作为后台任务."""
     # 使用 Celery 的 task 装饰器来装饰函数
     task = celery.task(func)
     @wraps(func)
@@ -90,7 +98,8 @@ def celery_task(func): #与celery.task装饰器配合,使函数被调用时始�
         return task.apply_async(args=args, kwargs=kwargs)
     return wrapper
 
-def rate_limit(event_type): #限制请求频率
+def rate_limit(event_type):
+    """用于限制请求频率的装饰器."""
     def decorator(func):
         def wrapper(*args, **kwargs):
             user_id = request.json.get('event').get('operator').get('user_id')
@@ -100,17 +109,17 @@ def rate_limit(event_type): #限制请求频率
             key = f"{user_id}:{event_type}"
 
             # 获取当前请求次数
-            request_count = r.zcard(key)
+            request_count = redis_client.zcard(key)
 
             # 检查是否超过限制
             if request_count >= REQUEST_LIMIT:
                 return jsonify({"error": "请求频率过高"}), 403
 
             # 添加当前请求时间
-            r.zadd(key, {current_time: current_time})
+            redis_client.zadd(key, {current_time: current_time})
 
             # 设置过期时间，确保在时间窗口结束后自动删除键
-            r.expire(key, TIME_WINDOW)
+            redis_client.expire(key, TIME_WINDOW)
 
             return func(*args, **kwargs)
         return wrapper
@@ -128,35 +137,43 @@ def request_url_verify_handler(req_data: UrlVerificationEvent):
 
 @event_manager.register("im.message.receive_v1")
 def message_receive_event_handler(req_data: MessageReceiveEvent):
+    """事件 接收消息-`im.message.receive_v1`的具体处理"""
     user_id = req_data.event.sender.sender_id.user_id
     message = req_data.event.message.__dict__
     sender = req_data.event.sender.__dict__
 
-    create_messageResponse(user_id=user_id,message=message,sender=sender)
+    _create_command_message_response(user_id=user_id,message=message,sender=sender)
 
     return jsonify()
 
 @event_manager.register("application.bot.menu_v6")
 @rate_limit("application.bot.menu_v6")    
 def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
+    """
+    事件 机器人菜单-`application.bot.menu_v6`的具体处理
+    """
     user_id = req_data.event.operator.operator_id.user_id
     event_key = req_data.event.event_key
 
     if event_key == 'custom_menu.inspect.items':
     #获取全部物品类型，配置映射
-        content = create_messageInteractive(object_id='0')
-        update_messageInteractive(user_id, content)
+        content = _create_message_card_date(object_id='0')
+        _send_a_new_message_card(user_id, content)
     elif event_key == 'custom_menu.test':
-        # DocMetadata = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
+        # 测试用
+        # DocMetadata = cloud_api_client.query_docs_metadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
         # DEBUG_OUT(DocMetadata)
-        # content = create_messageInteractive(object_id='0')
-        # update_messageInteractive(user_id, content)
+        # content = _create_message_card_date(object_id='0')
+        # _send_a_new_message_card(user_id, content)
         pass
     
     return jsonify()
 
 @event_manager.register("card.action.trigger")
 def card_action_event_handler(req_data: CardActionEvent):
+    """
+    事件 卡片交互-`card.action.trigger`的具体处理.
+    """
     event = req_data.event
     token = event.token
     user_id = event.operator.user_id
@@ -201,37 +218,37 @@ def card_action_event_handler(req_data: CardActionEvent):
                             }
 
                     else: #发送审批申请
-                        create_approvalObject(user_id, selectedObjectList, event.action.form_value.Input_value)
+                        _create_approval_about_apply_items(user_id, selectedObjectList, event.action.form_value.Input_value)
                         #清空选中物品列表
                         selectedObjectList = None
                         toast = {
                                 'type':'success',
                                 'content':'success: 已发送申请'
                             }                    
-                    update_card(token, object_id='0', selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id='0', selectedObjectList=selectedObjectList)
             else:
                 if value.name == 'home':
-                    update_card(token, object_id='0', selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id='0', selectedObjectList=selectedObjectList)
                 elif value.name == 'self':
-                    update_card(token, object_id='-1', user_id=user_id, selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id='-1', user_id=user_id, selectedObjectList=selectedObjectList)
                 elif value.name == 'object.inspect':
-                    update_card(token, object_id=value.id, selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id=value.id, selectedObjectList=selectedObjectList)
                 elif value.name == 'back':
                     if int(value.id) != 0: #主页时的返回按钮不可用
-                        update_card(token, object_id=int(value.id)/1000, selectedObjectList=selectedObjectList)                        
+                        _update_message_card(token, object_id=int(value.id)/1000, selectedObjectList=selectedObjectList)                        
                 elif value.name == 'object.return':
                     toast = {
                         'type':'success',
                         'content':'success: 已归还'
                     }
                     management.return_item(user_id,value.object_param_1)
-                    update_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
         elif event.action.tag == 'input':
             input_value = event.action.input_value
             selectedObjectList = event.action.value.selectedObjectList.__dict__
             
             if event.action.name == "input.search":
-                update_card(token, object_id=-2, target=input_value, selectedObjectList=selectedObjectList)
+                _update_message_card(token, object_id=-2, target=input_value, selectedObjectList=selectedObjectList)
         elif event.action.tag == 'checker':
             checked = event.action.checked
             selectedObjectList = event.action.value.selectedObjectList.__dict__
@@ -245,7 +262,7 @@ def card_action_event_handler(req_data: CardActionEvent):
                     del selectedObjectList['oid'][index]
                 except ValueError:
                     pass
-            update_card(token, object_id=int(event.action.value.oid)/1000, selectedObjectList=selectedObjectList)
+            _update_message_card(token, object_id=int(event.action.value.oid)/1000, selectedObjectList=selectedObjectList)
 
 
     request_data = {
@@ -255,6 +272,7 @@ def card_action_event_handler(req_data: CardActionEvent):
 
 @event_manager.register("approval_instance")
 def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
+    """回调 审批实例状态变化-`approval_instance`的具体处理"""
     event = req_data.event
     
     instance = approval_api_event.fetch_instance(event.instance_code)
@@ -290,20 +308,28 @@ Flask app function
 '''
 @app.route("/", methods=["POST"])
 def callback_event_handler():    
-    # 飞书事件回调
+    """
+    处理飞书的事件/回调
+    
+    在开发者后台配置请求地址后(可按需调整route地址)，飞书会将请求发来，由该函数处理。
+
+    该函数会提取事件/回调的唯一标识id:
+        假如redis内有重复id的事件/回调,认为该请求已处理,返回200空响应
+        假如redis中没相应数据,存储,并跳转到event_manager获取到事件/回调对应的处理函数
+    """
     requests = request.json
-    DEBUG_OUT(data=requests)
+    # DEBUG_OUT(data=requests)
     if requests.get('uuid'):  #回调
         logging.info(f"fetch request,uuid:{requests['uuid']}")
     elif requests.get("event"): #事件
         event_id = requests.get('header').get('event_id')
         create_time = requests.get('header').get('create_time')
         #使用redis监测重复请求
-        if r.exists(event_id): #请求已处理，跳过
+        if redis_client.exists(event_id): #请求已处理，跳过
             logging.error(f"This request has been handled. event_id:{event_id}")
             return jsonify()
         else:
-            r.set(event_id, create_time, ex=3600)
+            redis_client.set(event_id, create_time, ex=3600)
             logging.info(f"fetch request,event_id:{event_id}")
             management.insert_request(event_id,create_time)
     else:
@@ -315,17 +341,25 @@ def callback_event_handler():
 
 @app.errorhandler
 def msg_error_handler(ex):
+    """错误讯息处理"""
     logging.error(ex)
     response = jsonify(message=str(ex))
     response.status_code = (
-        ex.response.status_code if isinstance(ex, requests.HTTPError) else 500
+        ex.response.status_code if isinstance(ex, HTTPError) else 500
     )
     return response
 
 @app.before_first_request
-def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入members表中
+def search_contact_to_add_members():
+    """
+    (初始化)通过通讯录获取用户列表并将用户信息装入数据库members表中
+
+    使用`获取通讯录授权范围`api获取用户列表    
+        该api只能获取直属于组织的用户列表，因此需要调整组织架构让目标用户直属于组织;
+        或者 加点代码递归搜索组织下各部门的用户列表
+    """
     try:
-        user_ids = contact_api_client.get_scopes(user_id_type='user_id').get('data').get('user_ids')
+        user_ids = contact_api_client.fetch_scopes(user_id_type='user_id').get('data').get('user_ids')
         #校验md5值，检测是否有变化
         list_string = ''.join(map(str, user_ids))
         MD5remote = hashlib.md5()
@@ -351,10 +385,16 @@ def searchContactToAddMembers():    # 获取飞书通讯录列表并自动填入
         raise Exception(f"尝试通过通讯录初始化用户列表失败，请重试\n{e}")
 
 @app.before_first_request
-def getItemsBySheets(): #从电子表格中获取物品数量
+def get_items_by_sheets():
+    """
+    (初始化)从电子表格中获取物品数量.
+
+    目标电子表格:   ITEM_SHEET_TOKEN
+    目标工作表：    SHEET_ID_TOTAL
+    """
     #校验修改时间，检测是否有变化
     try:
-        DocMetadata = cloud_api_client.getDocMetadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
+        DocMetadata = cloud_api_client.query_docs_metadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
         if not DocMetadata:
             raise Exception(f"ITEM_SHEET_TOKEN:{ITEM_SHEET_TOKEN} 无法找到")
         
@@ -363,7 +403,7 @@ def getItemsBySheets(): #从电子表格中获取物品数量
 
         #如果物资表修改过（数据库数据过时），重新初始化物资数据库
         if latest_modify_time_local != latest_modify_time_remote:
-            sheet_date =  spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{SHEET_ID_TOTAL}!A2:D")
+            sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_TOTAL, "A2:D")
             if not sheet_date.get('data'):
                 raise Exception(f"SHEET_ID_TOTAL:{SHEET_ID_TOTAL} 无法找到")
             
@@ -383,9 +423,14 @@ def getItemsBySheets(): #从电子表格中获取物品数量
         raise Exception(f"{e}\n如需通过电子表格初始化数据库，请创建一个电子表格，按格式填入值后，确认`settings.json`中['sheet']:['token']和['sheet_id_TOTAL']是否正确。否则注释掉getItemsBySheets()")
 
 @app.before_first_request
-def subApprovalEvent(): #订阅审批事件
-    # 只能订阅一次，因此第一次初始化后会一直弹subscription existed异常（已捕获）
-    # 确认订阅成功后，你完全可以注释掉它
+def sub_approval_event(): 
+    """
+    (初始化)订阅审批事件
+
+    和其他事件不同，审批需要主动订阅才会反馈数据
+        只能订阅一次，因此第一次初始化后会一直弹subscription existed异常
+        确认订阅成功后，你可以注释掉它
+    """
     try:
         approval_api_event.subscribe(APPROVAL_CODE)
         logging.info(f"成功订阅审批事件{APPROVAL_CODE}")
@@ -396,31 +441,53 @@ def subApprovalEvent(): #订阅审批事件
 private function
 '''
 @celery_task
-def update_card(token, object_id=None, user_id=None, target=None, selectedObjectList=None):
-    data = create_messageInteractive(object_id, user_id, target, selectedObjectList)
+def _update_message_card(
+    token: str, 
+    object_id: str | None = None, 
+    user_id: str | None = None, 
+    target: str | None = None, 
+    selectedObjectList: list | None = None
+):
+    """
+    更新消息卡片
+    """
+    data = _create_message_card_date(object_id, user_id, 
+                                      target, selectedObjectList)
     if data:
         logging.info(f"更新卡片token:{token}")
-        message_api_client.update_interactive(token, data)
+        message_api_client.delay_update_message_card(token, data)
 
 @celery_task
-def update_messageInteractive(user_id, content):
-    # 如果之前有过消息卡片，先撤回再发送新卡片
+def _send_a_new_message_card(user_id: str, content: dict):
+    """
+    发送新消息卡片
+
+    如果之前该用户已有消息卡片，先撤回再发送新卡片
+    """
     try:
         alive_card_id = management.is_alive_card(user_id)
         if alive_card_id:
             logging.info(f"撤回与 {user_id} 的消息卡片{alive_card_id}")
-            management.update_card(user_id)
+            management._update_message_card(user_id)
             message_api_client.recall(alive_card_id)
 
         result = message_api_client.send_interactive_with_user_id(user_id, content)
         message_id = result.get('data').get('message_id')
         create_time = result.get('data').get('create_time')
         logging.info(f"向 {user_id} 发送新消息卡片{message_id}")
-        management.update_card(user_id,message_id,create_time)
+        management._update_message_card(user_id,message_id,create_time)
     except Exception as e:
         logging.error(f"{e}")
 
-def create_messageInteractive(object_id=None, user_id=None, target=None, selectedObjectList=None):
+def _create_message_card_date(
+        object_id: int, 
+        user_id: str, 
+        target: str, 
+        selectedObjectList: dict[str, list] | None = None
+    ):
+    """
+    生成消息卡片数据
+    """
     title_map = {
         '0':{'CARD_JSON':CARD_DISPLAY_JSON, 'title':"个人仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态'},
         '1':{'CARD_JSON':CARD_DISPLAY_JSON, 'title':"物资类型", 'param1':'ID', 'param2':'名称', 'param3':'数量'},
@@ -428,26 +495,28 @@ def create_messageInteractive(object_id=None, user_id=None, target=None, selecte
         '3':{'CARD_JSON':CARD_DISPLAY_JSON, 'title':"物资仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态'},
         '4':{'CARD_JSON':CARD_DISPLAY_JSON, 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量'},
     }
-    if object_id:
-        object_id = int(object_id)
-        _father_id = str(object_id)
-        title_id = '4' if object_id==-2 else \
-            ('0' if object_id==-1 else \
-            ('1' if object_id==0 else \
-             ('2' if object_id < 1000 else \
-              ('3' ) ) ) )
-        _id = object_id
+    _father_id = str(object_id)
+    # 获取对应的表格式id
+    if object_id == -2:
+        title_id = '4'
+    elif object_id == -1:
+        title_id = '0'
+    elif object_id == 0:
+        title_id = '1'
+    elif object_id < 1000:
+        title_id = '2'
     else:
-        raise Exception("参数错误")
-    
+        title_id = '3'
+    _id = object_id
+
+    # 如果不存在物品选择列表，则初始化
     if not selectedObjectList:
-        #初始化选择列表
         selectedObjectList = {
             'name':[],
             'oid':[]
         }
-    #开始构建卡片
-    #标题和列名
+    # 开始构建卡片
+    # 标题和列名
     values = {
         'title': title_map[title_id]['title'],
         'father_id':str(_father_id)
@@ -455,27 +524,26 @@ def create_messageInteractive(object_id=None, user_id=None, target=None, selecte
     title_text = (
         f"       "
         f"<font color=blue>{format_with_margin(title_map[title_id]['param1'],10)}</font>  "
-        f"<font color=red>{format_with_margin(title_map[title_id]['param3'],10)}</font>  "
-        f"<font color=green>{format_with_margin(title_map[title_id]['param2'],19,6)}</font>"
+        f"<font color=red>{format_with_margin(title_map[title_id]['param3'],4)}</font>  "
+        f"<font color=green>{format_with_margin(title_map[title_id]['param2'],20)}</font>"
     )
     values['title_text']=title_text
     json_data = copy.deepcopy(title_map[title_id]['CARD_JSON'])
     result_data = replace_placeholders(json_data, values)
-    #已选中物品数据加入到按钮返回值内
+    # 将已选中物品数据加入到按钮返回值内
     result_data['elements'][0]['columns'][1]['elements'][0]['behaviors'][0]['value']['selectedObjectList'] = selectedObjectList
     result_data['elements'][0]['columns'][2]['elements'][0]['behaviors'][0]['value']['selectedObjectList'] = selectedObjectList
     result_data['elements'][0]['columns'][3]['elements'][0]['value']['selectedObjectList'] = selectedObjectList
     result_data['elements'][1]['actions'][0]['value']['selectedObjectList'] = selectedObjectList
-
-    #查找相关数据
+    # 查找相关数据
     _list = None
     display_target = 'list' #默认以列表方式呈现，可选为['list','object']
     try:
         if title_id == '0': #个人页
-            _list = management.get_member_items(user_id)
+            _list = management.get_items(user_id=user_id)
             display_target = 'object'
         elif title_id == '1': #仓库（所有物品类型）
-            _list = management.get_category()
+            _list = management.get_categories()
         elif title_id == '2': #仓库（某类型的所有物品名）
             _list = management.get_list(category_id=_id)
         elif title_id == '3': #仓库（某名字的所有物品信息）
@@ -542,20 +610,22 @@ def create_messageInteractive(object_id=None, user_id=None, target=None, selecte
                 #添加一行勾选器
                 result_data['elements'].append(replace_placeholders(repeat_elements, obj))
         else:   #如无相关数据-提示用户
-            raise Exception(f"Error:找不到相关物品")
-    except Exception as e:
+            raise ValueError(f"Error:找不到相关物品")
+    except ValueError as e:
         result_data['elements'].append({
-                "tag": "div",
-                "text": {
-                    "tag": "plain_text",
-                    "content": f"{e}",
-                }
-            })
+            "tag": "div",
+            "text": {
+                "tag": "plain_text",
+                "content": f"{e}",
+            }
+        })
     #设置表单容器
     form_json = copy.deepcopy(FORM_JSON)
     #显示已选中物品
-    form_json['elements'][1]['content'] = "\n".join(f"{format_with_margin(name,margin=20)}{oid}" \
-        for name, oid in zip(selectedObjectList["name"], selectedObjectList["oid"])) 
+    form_json['elements'][1]['content'] = "\n".join(
+        f"{format_with_margin(name,margin=20)}{oid}"
+        for name, oid in zip(selectedObjectList["name"], selectedObjectList["oid"])
+    ) 
     #返回选中的物品列表
     form_json['elements'][3]['value']['selectedObjectList'] = selectedObjectList
     #添加表单容器    
@@ -563,26 +633,51 @@ def create_messageInteractive(object_id=None, user_id=None, target=None, selecte
     return result_data
 
 @celery_task
-def create_approvalObject(user_id, selectedObjectList, do): #创建物品审批
+def _create_approval_about_apply_items(
+    user_id: str, 
+    selectedObjectList: list, 
+    do: str = 'null'
+):
+    """
+    创建物品审批实例
+
+    创建APPROVAL_CODE对应的审批实例
+    审批定义应按照`配置指南`在控制台创造,特别是审批定义名和自定义id
+    """
     for oid in selectedObjectList['oid']:
         management.apply_item(user_id=user_id, oid=int(oid), do=do)
     form=[
         {'id':'do','type':'textarea','value':do if do else "None"},
-        {'id':'date','type':'date',"value": f"{datetime.fromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S+08:00")}"},
-        {'id':'objectList','type':'textarea', 'value':ujson.dumps(selectedObjectList,indent=2,ensure_ascii=False)}
-        # {'id':'objectList','type':'textarea', 'value':"\n".join(f"{format_with_margin(name,margin=20)}{oid}" \
-        #         for name, oid in zip(selectedObjectList["name"], selectedObjectList["oid"])) }
+        {'id':'date','type':'date',"value": 
+         f"{datetime.fromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S+08:00")}"},
+        {'id':'objectList','type':'textarea', 
+         'value':ujson.dumps(selectedObjectList,indent=2,ensure_ascii=False)}
     ]
 
-    approval_api_event.create(approval_code=APPROVAL_CODE, user_id=user_id,\
-                            form=ujson.dumps(form))
+    approval_api_event.create_instance(approval_code=APPROVAL_CODE, 
+                                       user_id=user_id, form=ujson.dumps(form))
     logging.info(f"发送审批,{user_id} 申请 {selectedObjectList['oid']}")
 
 '''
 user commands
 '''
 @celery_task
-def create_messageResponse(user_id,message,sender):
+def _create_command_message_response(
+    user_id: str,
+    message: str,
+    sender: str
+):
+    """
+    生成命令消息的回复
+
+    该函数会对传入的消息进行判断，如果为文本消息且开头是'/'则判断为指令
+    接收到指令消息后,该函数会读取出指令的object和params数据,并交给对应的处理函数处理
+    处理函数的返回值会作为消息发送给用户
+
+    支持的命令放在command_map内
+        key: 指令名，如命令"/add item ...",对应key='add'
+        value: 该指令的一些参数，比如处理函数，是否需要管理权限
+    """
     reply_text = ""
     reply_map = {
         'invald_type':'Error: 赞不支持此类消息',
@@ -594,18 +689,18 @@ def create_messageResponse(user_id,message,sender):
         'success': f'Success',
         'permission_denied': f'Error: 权限不足',
     }
-    # TODO:如果修改了函数名，记得更新此处
+    # 如果修改了函数名，记得更新此处
     command_map = {
-        'add':      {'command':command_add_object,      'needed_root':True},
-        'del':      {'command':command_delete_object,   'needed_root':True},
-        'help':     {'command':command_get_help,        'needed_root':False},
-        'op':       {'command':command_add_op,          'needed_root':True},
-        'deop':     {'command':command_delete_op,       'needed_root':True},
-        'lsop':     {'command':command_list_op,         'needed_root':False},
-        'search':   {'command':command_search_id,       'needed_root':False},
-        'return':   {'command':command_return_item,     'needed_root':False},
-        'save':     {'command':command_save,            'needed_root':True},
-        'load':     {'command':command_load,            'needed_root':True},
+        'add':      {'command':_command_add_object,      'needed_root':True},
+        'del':      {'command':_command_delete_object,   'needed_root':True},
+        'help':     {'command':_command_get_help,        'needed_root':False},
+        'op':       {'command':_command_add_op,          'needed_root':True},
+        'deop':     {'command':_command_delete_op,       'needed_root':True},
+        'lsop':     {'command':_command_list_op,         'needed_root':False},
+        'search':   {'command':_command_search_id,       'needed_root':False},
+        'return':   {'command':_command_return_item,     'needed_root':False},
+        'save':     {'command':_command_save,            'needed_root':True},
+        'load':     {'command':_command_load,            'needed_root':True},
     }
     #目前只能识别文字信息
     if message.get('message_type') != 'text':
@@ -654,7 +749,12 @@ def create_messageResponse(user_id,message,sender):
         }
         message_api_client.send_text_with_user_id(user_id,content)
 
-def command_add_object(reply_map, message, sender, object, params):
+def _command_add_object(reply_map, message, sender, object, params):
+    """
+    (指令)添加物品
+
+    指令参数参考`_command_get_help`
+    """
     necessary_param_map = {
         'item':['name','name_id'],
         'list':['name','category_id','category_name'],
@@ -671,20 +771,21 @@ def command_add_object(reply_map, message, sender, object, params):
             return reply_map['invalid_param'] % (f"{{{required_params_str}}}是必需的")
 
         else:
-            try:
-                #TODO:操作执行失败的检测与处理
-                if object == 'item':
-                    management.add_item(params=params)
-                elif object == 'list':
-                    management.add_list(params=params)
-                elif object == 'category':
-                    management.add_category(params=params)
-                #TODO决策：自动刷新消息卡片?
-                return reply_map['success']
-            except Exception as e:
-                return f"{e}"
-          
-def command_delete_object(reply_map, message, sender, object, params):
+            #TODO:操作执行失败的检测与处理
+            if object == 'item':
+                management.add_item(params=params)
+            elif object == 'list':
+                management.add_list(params=params)
+            elif object == 'category':
+                management.add_category(params=params)
+            return reply_map['success']
+        
+def _command_delete_object(reply_map, message, sender, object, params):
+    """
+    (指令)删除物品
+
+    指令参数参考`_command_get_help`
+    """
     necessary_param_map = {
         'item':['id',],
         'list':['id','name'],
@@ -700,20 +801,22 @@ def command_delete_object(reply_map, message, sender, object, params):
             return reply_map['invalid_param'] % (f"{{{required_params_str}}}是必需的")
 
         else:
-            try:
-                #TODO:操作执行失败的检测与处理
-                if object == 'item':
-                    management.del_item(params=params)
-                elif object == 'list':
-                    management.del_list(params=params)
-                elif object == 'category':
-                    management.del_category(params=params)
-            
-                return reply_map['success']
-            except Exception as e:
-                return f"{e}"
+            #TODO:操作执行失败的检测与处理
+            if object == 'item':
+                management.del_item(params=params)
+            elif object == 'list':
+                management.del_list(params=params)
+            elif object == 'category':
+                management.del_category(params=params)
+        
+            return reply_map['success']
 
-def command_add_op(reply_map, message, sender, object, params):
+def _command_add_op(reply_map, message, sender, object, params):
+    """
+    (指令)设置管理员
+
+    指令参数参考`_command_get_help`
+    """
     user_id = None
     for mention in message['mentions']:
         if mention.get('key') == object:
@@ -726,7 +829,12 @@ def command_add_op(reply_map, message, sender, object, params):
     management.set_member_root(user_id)
     return reply_map['success']
 
-def command_delete_op(reply_map, message, sender, object, params):
+def _command_delete_op(reply_map, message, sender, object, params):
+    """
+    (指令)删除管理员
+
+    指令参数参考`_command_get_help`
+    """
     user_id = None
     for mention in message['mentions']:
         if mention['key'] == object:
@@ -740,56 +848,82 @@ def command_delete_op(reply_map, message, sender, object, params):
     management.set_member_unroot(user_id)
     return reply_map['success']
 
-def command_list_op(reply_map, message, sender, object, params):
+def _command_list_op(reply_map, message, sender, object, params):
+    """
+    (指令)列出管理员名单
+
+    指令参数参考`_command_get_help`
+    """
     result = management.get_members_root()
     return ujson.dumps(result, ensure_ascii=False) if result else '当前暂无管理员'
 
-def command_search_id(reply_map, message, sender, object, params):
-    try:
-        id = int(object)
-    except:
+def _command_search_id(reply_map, message, sender, object, params):
+    """
+    (指令)搜索id
+
+    指令参数参考`_command_get_help`
+    """
+    if can_convert_to_int(object):
         return reply_map['invalid_object'] % f"/search {{id}}<-int不存在"
     
+    #TODO:异常处理
     try:
         user_id = sender['sender_id']['user_id']
         content = {
                 'type':'template',
-                'data':create_messageInteractive(object_id=object)
+                'data':_create_message_card_date(object_id=object)
             }
-        update_messageInteractive(user_id, content)
+        _send_a_new_message_card(user_id, content)
     
         return None
     except Exception as e:
-        return f"{e}"
+        return f"失败 {e}"
 
-def command_return_item(reply_map, message, sender, object, params):
-    try:
-        oid = int(object)
-    except:
+def _command_return_item(reply_map, message, sender, object, params):
+    """
+    (指令)删除物品
+
+    指令参数参考`_command_get_help`
+    """
+    if not can_convert_to_int(object):
         return reply_map['invalid_object'] % f"/return {{id}}<-int不存在"
     
-    user_id = sender['sender_id']['user_id']
-    result = management.return_item(user_id,oid)
+    #TODO:异常处理
+    try:
+        user_id = sender['sender_id']['user_id']
+        result = management.return_item(user_id,int(object))
 
-    return result
+        return result
+    except Exception as e:
+        return f"失败 {e}"
 
-def command_save(reply_map, message, sender, object, params):
+def _command_save(reply_map, message, sender, object, params):
+    """
+    (指令)存储当前数据库中的物资(详细)信息到电子表格中.
+    """
     try:
         #先删除旧记录
-        spreadsheet_api_client.dimensionRange(ITEM_SHEET_TOKEN,SHEET_ID_ITEM,"COLUMNS",1,6)
+        spreadsheet_api_client.delete_rows_or_columns(
+            ITEM_SHEET_TOKEN,SHEET_ID_ITEM,"COLUMNS",1,6)
         #批量保存
         start_line = end_line= 2
-        category = management.get_category()
-        for category_id,category_name in zip(category['id'],category['name']):
+        category = management.get_categories()
+        for category_id,category_name in zip(
+            category['id'],category['name']
+        ):
             items_list = management.get_list(category_id)
             values = []
-            for name,name_id in zip(items_list['name'],items_list['id']):
+            for name,name_id in zip(
+                items_list['name'],items_list['id']
+            ):
                 items_info = management.get_items(name_id, name)
                 if not items_info:
                     continue
                 end_line += len(items_info['id'])
-                for oid,useable,wis,do in zip(items_info['id'],items_info['useable'],\
-                                                items_info['wis'],items_info['do']):
+                for oid,useable,wis,do in zip(
+                    items_info['id'],items_info['useable'],
+                    items_info['wis'],items_info['do']
+                ):
                     value =[]
                     value.append(oid)
                     value.append(name)
@@ -798,16 +932,22 @@ def command_save(reply_map, message, sender, object, params):
                     value.append(wis)
                     value.append(do)
                     values.append(value)
-            spreadsheet_api_client.modifySheet(ITEM_SHEET_TOKEN,SHEET_ID_ITEM,f"A{start_line}:F{end_line-1}",values)
-            logging.info(f"已保存 {category_name} 类型的信息到电子表格中，行数{start_line}:{end_line-1}")
+            spreadsheet_api_client.write_date_to_a_single_range(
+                ITEM_SHEET_TOKEN,SHEET_ID_ITEM,f"A{start_line}:F{end_line-1}",values)
+            logging.info(
+                f"已保存 {category_name} 类型的信息到电子表格中，行数{start_line}:{end_line-1}")
             start_line = end_line
         return reply_map['success']
     except Exception as e:
+        #TODO:异常处理
         return f"失败 {e}"
 
-def command_load(reply_map, message, sender, object, params):
+def _command_load(reply_map, message, sender, object, params):
+    """
+    (指令)从设定的电子表格中读取物资(详细)信息存储当前数据库中.
+    """
     try:
-        sheet_date =  spreadsheet_api_client.readRange(ITEM_SHEET_TOKEN, f"{SHEET_ID_ITEM}!A2:F")
+        sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:F")
         items_info = sheet_date['data']['valueRange']['values']
         management.del_all()
         for item_info in items_info:
@@ -821,7 +961,8 @@ def command_load(reply_map, message, sender, object, params):
     except Exception as e:
         return f"失败 {e}"
 
-def command_get_help(reply_map, message, sender, object, params):
+def _command_get_help(reply_map, message, sender, object, params):
+    """返回指令帮助菜单."""
     margin = 10
     return f'''\
     机器人命令指南：
