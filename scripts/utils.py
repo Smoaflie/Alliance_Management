@@ -5,7 +5,7 @@ import ujson
 """
 
 class Obj(dict):
-    """自定义对象类,配合dict_2_obj将字典转换成对象"""
+    """自定义对象类,用于将字典转换成对象"""
     def __init__(self, d):
         for a, b in d.items():
             if isinstance(b, (list, tuple)):
@@ -15,6 +15,17 @@ class Obj(dict):
 
 def dict_2_obj(d: dict):
     return Obj(d)
+
+def obj_2_dict(o: Obj) -> dict:
+    r = {}
+    for a, b in o.__dict__.items():
+        if isinstance(b, str):
+            r[a] = b
+        elif isinstance(b, (list, tuple)):
+            r[a] = [obj_2_dict(x) if isinstance(x, Obj) else x for x in b]
+        elif isinstance(b, Obj):
+            r[a] = obj_2_dict(b)
+    return r
 
 def DEBUG_OUT(data=None, json=None, file='request.json'):
     """调试时输出数据到文件中."""

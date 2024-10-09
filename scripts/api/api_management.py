@@ -62,13 +62,13 @@ class ApiManagement(object):
         if category_id:
             info = self.sql.fetchall('item_category', 'father', category_id)
             if not info:
-                raise ValueError(f"{__name__}无法通过category_id:{category_id}找到目标类型")
+                raise ValueError(f"{__name__}.get_category无法通过category_id:{category_id}找到目标类型")
         elif category_name:
             info = self.sql.fetchall('item_category', 'name', category_name)
             if not info:
-                raise ValueError(f"{__name__}无法通过category_name:{category_name}找到目标类型")
+                raise ValueError(f"{__name__}.get_category无法通过category_name:{category_name}找到目标类型")
         else:
-            raise ValueError(f"{__name__}缺少必要的参数")
+            raise ValueError(f"{__name__}.get_category缺少必要的参数")
         
         
         r = {'id': [], 'name': [], 'total': []}
@@ -79,12 +79,12 @@ class ApiManagement(object):
         return r
     
     def get_list(
-            self, 
-            category_id: int | None = None, 
-            category_name: str | None = None, 
-            name: str | None = None, 
-            name_id: int | None = None
-        ) -> dict[str, list]:
+        self, 
+        category_id: int | None = None, 
+        category_name: str | None = None, 
+        name: str | None = None, 
+        name_id: int | None = None
+    ) -> dict[str, list]:
         """
         获取仓库内符合要求的物品信息(简略)
         
@@ -124,7 +124,7 @@ class ApiManagement(object):
             if not info:
                 raise ValueError(f"无法找到目标物品 name_id:{name_id}")
         else:
-            raise ValueError(f"{__name__} 缺少必要的参数")
+            raise ValueError(f"{__name__}.get_list 缺少必要的参数")
         
         
         r = {'id': [], 'father': [], 'name': [], 'total': [], 'free': []}
@@ -137,10 +137,10 @@ class ApiManagement(object):
         return r
     
     def _return_itemTable_by_info(
-            self, 
-            info: list, 
-            name: str | None = None
-        ) -> dict[str,list] :
+        self, 
+        info: list, 
+        name: str | None = None
+    ) -> dict[str,list] :
         """
         将物品详细信息格式化成统一格式
 
@@ -234,12 +234,12 @@ class ApiManagement(object):
             raise ValueError(f"无法找到目标物品 oid:{str(oid)}") if info else None
 
     def get_items(
-            self, 
-            name_id: int | None = None, 
-            name: str | None = None,
-            user_id: str | None = None,
-            user_name: str | None = None
-        ) -> dict[str, list]:
+        self, 
+        name_id: int | None = None, 
+        name: str | None = None,
+        user_id: str | None = None,
+        user_name: str | None = None
+    ) -> dict[str, list]:
         """
         获取符合条件的物品的详细信息
         
@@ -307,7 +307,7 @@ class ApiManagement(object):
             
             return member_items_out
         else:
-            raise ValueError(f"{__name__}缺少必要的参数")
+            raise ValueError(f"{__name__}.get_items 缺少必要的参数")
 
     def add_member(self, user_id: str, user_name: str):
         """添加用户"""
@@ -378,19 +378,19 @@ class ApiManagement(object):
         self.sql.update('members', ('user_id',user_id), {'root':0})
 
     def add_item(
-            self, 
-            name_id: int | None = None, 
-            name: str | None = None, 
-            num: int = 1, 
-            num_broken: int = 0,
-            category_name: str | None = None, 
-            category_id: int | None = None, 
-            params: dict | None = None,
-            oid: int | None = None,
-            useable: int | None = None,
-            wis: str | None = None,
-            do: str | None = None
-        ):
+        self, 
+        name_id: int | None = None, 
+        name: str | None = None, 
+        num: int = 1, 
+        num_broken: int = 0,
+        category_name: str | None = None, 
+        category_id: int | None = None, 
+        params: dict | None = None,
+        oid: int | None = None,
+        useable: int | None = None,
+        wis: str | None = None,
+        do: str | None = None
+    ):
         """
         添加物品到数据库中
 
@@ -458,8 +458,20 @@ class ApiManagement(object):
             insert_data['do'] = do
             self.sql.insert('item_info', insert_data)
 
-    def add_items_until_limit(self, name_id=None, num=1, name=None, num_broken=None, category_name=None, category_id=None):
+    def add_items_until_limit(
+        self, 
+        name_id: int | None = None, 
+        num: int = 1, 
+        name: str | None = None, 
+        num_broken: int = 0,
+        category_name: str | None = None, 
+        category_id: int | None = None, 
+    ):
         """
+        添加一定量物品到数据库中，使总量大于等于设定值
+
+        raise:
+            ValueError: 传入参数不足以新建物品时抛出
         """
         if name_id:
             father_recoder = self.sql.fetchone('item_list', 'id', name_id)
@@ -474,7 +486,22 @@ class ApiManagement(object):
             self.add_item(name_id,name,num,num_broken,category_name,category_id)
 
 
-    def add_list(self, name=None, category_name=None, category_id=None, params=None):
+    def add_list(
+        self, 
+        name: str | None = None, 
+        category_name: str | None = None, 
+        category_id: int | None = None, 
+        params: dict | None = None,
+    ) -> int:
+        """
+        添加物品信息到数据库中
+        
+        Return:
+            new_id: 新建的物品信息的id
+        
+        raise:
+            ValueError: 传入参数不足以新建物品时抛出
+        """
         if params:
             name = params.get('name')
             category_name = params.get('category_name')
@@ -486,20 +513,22 @@ class ApiManagement(object):
         elif category_name:
             father_recoder = self.sql.fetchone('item_category', 'name', category_name)
         else:
-            raise Exception("缺少必要的参数")
+            raise ValueError("缺少必要的参数")
         
         if not father_recoder:
             if  category_name:
                 category_id = self.add_category(category_name)
             else:
-                raise Exception(f"父记录category {category_name if category_name else category_id} 未找到，且缺少参数无法新建，跳过插入")
+                raise ValueError("父记录category %s 未找到，且缺少参数无法新建，跳过插入" %
+                                 category_name if category_name else category_id)
         else:
             category_id = father_recoder[0]
 
         # 查找是否已存在
         self_recoder = self.sql.fetchone('item_list', 'name', name)
         if self_recoder:
-            print(f"当前列表 {name} 已存在")
+            logging.info("%s.add_list 尝试创建列表,但当前列表 %s 已存在" % (
+                            __name__, name))
             return
         # 设置Id，进行添加
         self_recoder = self.sql.fetchall('item_list', 'father', category_id)
@@ -511,7 +540,20 @@ class ApiManagement(object):
         })
         return new_id #item_info`s father
 
-    def add_category(self, category_name=None, params=None):
+    def add_category(
+        self,
+        category_name: str | None = None, 
+        params: dict | None = None,
+    ) -> int:
+        """
+        添加物品类型到数据库中
+        
+        Return:
+            new_id: 新建的物品类型的id
+        
+        raise:
+            ValueError: 传入参数不足以新建物品时抛出
+        """
         if params:
             category_name = params.get('category_name')
 
@@ -529,51 +571,131 @@ class ApiManagement(object):
         })
         return new_id
 
-    #TODO:删除父节点时同时删除所有子节点
-    def del_item(self, id=None, params=None):
+    def del_item(
+        self, 
+        id: int | None = None, 
+        params: dict | None = None
+    ):
+        """
+        删除物品对象
+
+        Args:
+            id: 物品对象oid
+            params: 存储物品对象oid的字典
+        """
         if params:
             id = params.get('id')
 
         self.sql.delete('item_info','id',id)
 
-    def del_list(self,name=None,id=None,params=None):
+    def del_list(
+        self,
+        name: str | None = None,
+        id: int | None = None, 
+        params: dict | None = None
+    ):
+        """
+        删除物品信息
+
+        Args:
+            name: 物品名
+            id: 物品信息id
+            params: 存储上述参数的字典
+
+        raise:
+            ValueError: 缺少必要的参数时抛出
+
+        TODO:删除父节点时同时删除所有子节点
+        """
         if params:
             id = params.get('id')
             name = params.get('name')
 
         if not (name or id):
-            raise Exception("缺少必要的参数")
+            raise ValueError("缺少必要的参数")
         if name:
             self.sql.delete('item_list','name',name)
         elif id:
             self.sql.delete('item_list','id',id)
 
-    def del_category(self,name=None,id=None, params=None):
+    def del_category(
+        self,
+        name: str | None = None,
+        id: int | None = None, 
+        params: dict | None = None
+    ):
+        """
+        删除物品类型
+
+        Args:
+            name: 类型名
+            id: 物品类型id
+            params: 存储上述参数的字典
+
+        raise:
+            ValueError: 缺少必要的参数时抛出
+
+        TODO:删除父节点时同时删除所有子节点
+        """
         if params:
             id = params.get('id')
             name = params.get('name')
 
         if not (name or id):
-            raise Exception("缺少必要的参数")
+            raise ValueError("缺少必要的参数")
         if name:
             self.sql.delete('item_category','name',name)
         elif id:
             self.sql.delete('item_category','id',id)
 
     def del_all(self):
+        """清除所有物品对象、信息、类型"""
         self.sql.delete('item_info')
         self.sql.delete('item_list')
         self.sql.delete('item_category')
 
-    def apply_item(self, user_id, oid, do=None):
-        # item_info = self.get_item(oid)
-        # if item_info['useable'][0] != '可用':
-        #     raise Exception (f'Error while {user_id} apply_item {oid} for {do}')
-        
-        return self.set_item_state(user_id,'APPLY',oid,4,do=do)
+    def apply_item(
+        self, 
+        oid: int, 
+        user_id: str, 
+        do: str | None = None
+    ):
+        """
+        对物品发出申请
+
+        会在logs表中记录申请人，操作，操作对象，用途
+        然后把物品状态修改为'审批中'
+
+        Args:
+            user_id: 申请人user_id
+            oid:    申请的物品对象oid
+            do:     申请用途
+        """
+        return self.set_item_state(oid=oid,operater_user_id=user_id,
+                                   operation='APPLY',useable=4,do=do)
     
-    def set_item_state(self, operater_user_id=None, operation=None,\
-                        oid=None, useable=None, wis=None, do=None):
+    def set_item_state(
+        self, 
+        oid: int, 
+        operater_user_id: str | None = None, 
+        operation: str | None = None,
+        useable: int | None = None, 
+        wis: str | None = None, 
+        do: str | None = None
+    ):
+        """
+        修改物品状态
+
+        根据参数修改物品状态,并在logs表中记录
+
+        Args:
+            oid:    操作的物品对象oid
+            operater_user_id: 操作者user_id
+            operation:  操作者名称
+            useable: 修改后新状态值,参考useable_map
+            wis:    修改后的物品位置
+            do:     备注
+        """
         self.sql.insert('logs', {'time':int(time.time()*1000),
                                  'userId':operater_user_id,
                                  'operation':operation,
@@ -583,13 +705,28 @@ class ApiManagement(object):
         update_date['useable'] = useable
         update_date['wis'] = wis
         self.sql.update('item_info', ('id',oid), update_date)
-        return 'success'
 
-    def return_item(self, user_id, oid):
+    def return_item(
+        self, 
+        user_id: str, 
+        oid: int
+    ):
+        """
+        归还物品
+
+        修改物品状态为可用,并在logs表中记录归还人
+
+        Args:
+            user_id: 归还人user_id
+            oid:    归还的物品对象oid
+
+        Return:
+            操作结果
+        """
         try:
             member = self.get_member(user_id)
             item_info = self.get_item(oid)
-        except Exception as e:
+        except ValueError as e:
             return f"Error: {e}"
         if item_info['useable'][0] == '报废':
             return "Error: 它已经报废了，你真的要放进仓库吗"
@@ -598,30 +735,50 @@ class ApiManagement(object):
         if item_info['wis'][0] != member['name'] and not member['root']:
             return "Error: 你不是该物品的持有者"
         else:
-            self.set_item_state(operater_user_id=user_id,operation='RETURN',\
+            self.set_item_state(operater_user_id=user_id,operation='RETURN',
                                 oid=oid,useable=1,wis='仓库',do='null')
             return f'你{"帮忙" if member['root'] else ""}归还了物品 {item_info['name'][0]} oid:{oid}'
 
-    def update_card(self, user_id, message_id=None, create_time=None): #更新用户和对应的信息卡片信息
+    def update_card(
+        self, 
+        user_id: str, 
+        message_id: str | None = None, 
+        create_time: str | None = None
+    ):
+        """
+        更新用户和对应的信息卡片信息
+
+        Args:
+            user_id: 用户user_id
+            message_id: 消息卡片id
+            create_time: 消息卡片创建时间
+        """
         if message_id and create_time:
-            result = self.sql.update('members',('user_id',user_id),{   \
+            self.sql.update('members',('user_id',user_id),{   
                 'card_message_id':message_id,'card_message_create_time':create_time})
         else:
-            result = self.sql.update('members',('user_id',user_id),{   \
+            self.sql.update('members',('user_id',user_id),{   
                 'card_message_id':None,'card_message_create_time':None})
         
-        return result
-        
-    def is_alive_card(self, user_id):
+    def is_alive_card(self, user_id: str) -> str | None:
+        """
+        判断该用户的消息卡片是否可用
+
+        Return:
+            如可用,返回消息卡片id
+            不可用,返回None
+        """
         result = self.sql.fetchone('members','user_id',user_id)
-        return result[3] if (result and result[3] not in ('null',None) and \
+        return result[3] if (result and result[3] not in ('null',None) and
             time.time()-int(result[4])/1000<1036800) else None
     
-    def is_user_root(self, user_id):
+    def is_user_root(self, user_id: str) -> bool:
+        """判断用户是不是管理员"""
         result = self.sql.fetchone('members','user_id',user_id)
         return result[2]==1
     
-    def get_database_md5(self):
+    def get_database_md5(self) -> str:
+        """获取数据库的md5值"""
         table_list = self.sql.gettable()
         table_checksum_list = []
         md5_hash = hashlib.md5()
@@ -630,32 +787,29 @@ class ApiManagement(object):
         combined_string = ''.join(table_checksum_list)
         md5_hash.update(combined_string.encode('utf-8'))
         return  md5_hash.hexdigest()
-    
-    def fetch_request(self,event_id):
-        return self.sql.fetchone('requests','event_id',event_id)
- 
-    def insert_request(self,event_id,create_time):
-        return self.sql.insert('requests',{'event_id':event_id,'create_time':create_time})
-    
-    def clean_requests(self):
-        return self.sql.delete("requests")
 
-    def fetch_contact_md5(self):
+    def fetch_contact_md5(self) -> str | None:
+        """获取数据库中存储的通讯录md5值"""
         result = self.sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
         return result[1] if result else None
     
-    def update_contact_md5(self,contact_md5):
+    def update_contact_md5(self,contact_md5: str):
+        """设置数据库中存储的通讯录md5值"""
         if not self.fetch_contact_md5():
-            self.sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the contact.'})
+            self.sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG',
+                                     'do':'used to detect changes in the contact.'})
         self.sql.update('logs',('do','used to detect changes in the contact.'),{'time':contact_md5})
 
-    def fetch_itemSheet_md5(self):
+    def fetch_itemSheet_md5(self) -> str:
+        """获取数据库中存储的电子表格md5值"""
         result = self.sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
         return result[1] if result else None
     
     def update_itemSheet_md5(self,itemSheet_md5):
+        """设置数据库中存储的电子表格md5值"""
         if not self.fetch_itemSheet_md5():
-            self.sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG', 'do':'used to detect changes in the spreadsheet.'})
+            self.sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG',
+                                     'do':'used to detect changes in the spreadsheet.'})
         self.sql.update('logs',('do','used to detect changes in the spreadsheet.'),{'time':itemSheet_md5})
     
     

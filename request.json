@@ -1,39 +1,23 @@
 {
     "schema": "2.0",
     "header": {
-        "event_id": "43b0fcbf4c2d27f389768bd30f1c8b69",
+        "event_id": "d0f60d964b6558a67e66fe02b0f3abc8",
         "token": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-        "create_time": "1728233521940580",
-        "event_type": "card.action.trigger",
+        "create_time": "1728470313000",
+        "event_type": "application.bot.menu_v6",
         "tenant_key": "15874fbe83c4d75f",
-        "app_id": "cli_a6687b8d5973100b"
+        "app_id": "cli_a78cfcfbc2f9900e"
     },
     "event": {
+        "event_key": "custom_menu.inspect.items",
         "operator": {
-            "tenant_key": "15874fbe83c4d75f",
-            "user_id": "f1549d18",
-            "open_id": "ou_b96dfeff24034b06f6c537d7716b95b6",
-            "union_id": "on_39c045cdfce9993e11416da69de0d585"
-        },
-        "token": "c-9acea02065a65bfe4146d32f1fa709c312e642de",
-        "action": {
-            "value": {
-                "id": "1001002",
-                "name": "object.return",
-                "object_param_1": "1001002",
-                "object_param_2": "小装甲板",
-                "object_param_3": "已借出",
-                "selectedObjectList": {
-                    "name": [],
-                    "oid": []
-                }
+            "operator_id": {
+                "open_id": "ou_b79d89b81594902059e9dbc1e863d385",
+                "union_id": "on_39c045cdfce9993e11416da69de0d585",
+                "user_id": "f1549d18"
             },
-            "tag": "button"
+            "operator_name": "杨晨翔"
         },
-        "host": "im_message",
-        "context": {
-            "open_message_id": "om_96776ad412a65155c3d2faa5912235dd",
-            "open_chat_id": "oc_9252dd0cf0db7d2531a0d7d3f8aca5ad"
-        }
+        "timestamp": 1728470313
     }
 }

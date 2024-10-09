@@ -12,7 +12,8 @@ services:
       - ./:/home/app  # 挂载本地目录到容器中
     depends_on:
       - mysql
-    command: sh -c "python3 ./init.py && python3 ./server.py"  # 运行初始化脚本
+    command: sh -c "python3 ./init.py && (python3 ./server.py & 
+              celery -A server.celery worker --loglevel=info)"  # 运行初始化脚本
     container_name:
       management-server
     networks:
@@ -40,24 +41,6 @@ services:
       management-redis
     networks:
       - management-network
-
-  celery:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    image: management_python
-    volumes:
-      - ./:/home/app  # 挂载本地目录到容器中
-    depends_on:
-      - mysql
-      - redis
-      - server
-    command: sh -c "celery -A server.celery worker --loglevel=info"
-    container_name:
-      management-server-celery
-    networks:
-      - management-network
-    
 
 networks:
   management-network:

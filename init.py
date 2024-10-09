@@ -1,6 +1,18 @@
+import hashlib
+import os
 import pymysql
-import ujson
 import time
+import ujson
+
+from dotenv import load_dotenv, find_dotenv
+
+from scripts.api.api_management import ApiManagement
+from scripts.api.api_feishu_clients import MessageApiClient
+from scripts.api.api_feishu_clients import SpreadsheetApiClient
+from scripts.api.api_feishu_clients import ContactApiClient
+from scripts.api.api_feishu_clients import CloudApiClient
+from scripts.api.api_feishu_clients import ApprovalApiClient
+from scripts.api.api_feishu_events import EventManager
 
 def table_exists(cursor, table_name):
     """
@@ -14,6 +26,121 @@ def trigger_exists(cursor, trigger_name):
     """
     cursor.execute("SELECT * FROM information_schema.TRIGGERS WHERE TRIGGER_NAME = '%s';" % trigger_name)
     return cursor.fetchone() is not None
+
+def init_from_feishu():
+    #以下内容直接从server搬过来的，没进行优化
+    # load env parameters form file named .env
+    load_dotenv(find_dotenv())
+    # load from env
+    APP_ID = os.getenv("APP_ID")
+    APP_SECRET = os.getenv("APP_SECRET")
+    VERIFICATION_TOKEN = os.getenv("VERIFICATION_TOKEN")
+    ENCRYPT_KEY = os.getenv("ENCRYPT_KEY")
+    LARK_HOST = os.getenv("LARK_HOST")
+    with open('settings.json', 'r') as f:
+        settings = ujson.loads(f.read())
+        management = ApiManagement(settings['mysql'])
+        ITEM_SHEET_TOKEN = settings.get('sheet').get('token')
+        SHEET_ID_TOTAL = settings.get('sheet').get('sheet_id_TOTAL')
+        APPROVAL_CODE = settings.get('approval').get('approval_code')
+
+        spreadsheet_api_client = SpreadsheetApiClient(APP_ID, APP_SECRET, LARK_HOST)
+        contact_api_client = ContactApiClient(APP_ID, APP_SECRET, LARK_HOST)
+        cloud_api_client = CloudApiClient(APP_ID, APP_SECRET, LARK_HOST)
+        approval_api_event = ApprovalApiClient(APP_ID, APP_SECRET, LARK_HOST)
+
+    def search_contact_to_add_members():
+        """
+        (初始化)通过通讯录获取用户列表并将用户信息装入数据库members表中
+
+        使用`获取通讯录授权范围`api获取用户列表    
+            该api只能获取直属于组织的用户列表，因此需要调整组织架构让目标用户直属于组织;
+            或者 加点代码递归搜索组织下各部门的用户列表
+        """
+        try:
+            user_ids = contact_api_client.fetch_scopes(user_id_type='user_id').get('data').get('user_ids')
+            #校验md5值，检测是否有变化
+            list_string = ''.join(map(str, user_ids))
+            MD5remote = hashlib.md5()
+            MD5remote.update(list_string.encode('utf-8'))
+            MD5remote = MD5remote.hexdigest()
+
+            MD5local = management.fetch_contact_md5()
+
+            if MD5local != MD5remote:
+                items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
+                user_list = list()
+                for item in items:
+                    user_list.append({
+                        'name':item['name'],
+                        'user_id':item['user_id']
+                    })
+                management.add_member_batch(user_list)
+                management.update_contact_md5(MD5remote)
+                print("add members from contact.")
+            else:
+                print("skip add members from contact.")
+        except Exception as e:
+            print("尝试通过通讯录初始化用户列表失败: %s" % e)
+
+    def get_items_by_sheets():
+        """
+        (初始化)从电子表格中获取物品数量.
+
+        目标电子表格:   ITEM_SHEET_TOKEN
+        目标工作表：    SHEET_ID_TOTAL
+
+        如需通过电子表格初始化数据库，请创建一个电子表格，按格式填入值后，确认
+        `settings.json`中['sheet']:['token']和['sheet_id_TOTAL']是否正确。
+        否则注释掉该函数
+        """
+        try:
+            #获取文档修改时间，检测是否有变化
+            DocMetadata = cloud_api_client.query_docs_metadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
+            if not DocMetadata:
+                raise ValueError(f"ITEM_SHEET_TOKEN:{ITEM_SHEET_TOKEN} 无法找到")
+            
+            latest_modify_time_remote = DocMetadata[0].get('latest_modify_time') #取[0]是因为使用token只会搜到一个文件
+            latest_modify_time_local = management.fetch_itemSheet_md5()
+
+            #如果物资表修改过（数据库数据过时），重新初始化物资数据库
+            if latest_modify_time_local != latest_modify_time_remote:
+                sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_TOTAL, "A2:D")
+                if not sheet_date.get('data'):
+                    raise ValueError(f"SHEET_ID_TOTAL:{SHEET_ID_TOTAL} 无法找到")
+                
+                item_list = sheet_date.get('data').get('valueRange').get('values')
+                print('add item by sheet')
+                for item in item_list:
+                    category_name = item[0]
+                    item_name = item[1]
+                    item_num_total = item[2] if item[2] else 0
+                    item_num_broken = item[3] if item[3] else 0
+                    management.add_items_until_limit(name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
+                #虽然函数名是转换成md5，但不转也能直接用
+                management.update_itemSheet_md5(latest_modify_time_remote)
+            else:
+                print('skip add item by sheet')
+        except Exception as e:
+            print("尝试通过电子表格初始化物资信息失败: %s" % e)
+
+    def sub_approval_event(): 
+        """
+        (初始化)订阅审批事件
+
+        和其他事件不同，审批需要主动订阅才会反馈数据
+            只能订阅一次，因此第一次初始化后会一直弹subscription existed异常
+            确认订阅成功后，你可以注释掉它
+        """
+        try:
+            approval_api_event.subscribe(APPROVAL_CODE)
+            print("成功订阅审批事件 %s", APPROVAL_CODE)
+        except Exception as e:
+            print("尝试通过电子表格初始化物资信息失败: %s" % e)
+
+    search_contact_to_add_members()
+    get_items_by_sheets()
+    sub_approval_event()
 
 if __name__ == '__main__':
     f = open('settings.json', 'r')
@@ -122,13 +249,6 @@ if __name__ == '__main__':
           `root` int(1) NOT NULL DEFAULT 0,
           `card_message_id` text,
           `card_message_create_time` text
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
-        #  存储已处理的飞书请求token  
-            # `event_id` 事件id
-            # `create_time` 创建时间  
-        'requests': '''CREATE TABLE `requests` (
-          `event_id` text NOT NULL,
-          `create_time` text NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
     }
     # 逐个检查并创建表
@@ -319,4 +439,5 @@ if __name__ == '__main__':
 
     print('数据库初始化成功')
 
-
+    print('尝试从云端初始化数据库')
+    init_from_feishu()

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3.12.3
 import copy
-import hashlib
 import logging
 import os
 import re
@@ -17,6 +16,7 @@ from flask import request
 from functools import wraps
 from requests import HTTPError
 
+from scripts.utils import obj_2_dict
 from scripts.utils import DEBUG_OUT
 from scripts.utils import format_with_margin
 from scripts.utils import can_convert_to_int
@@ -139,10 +139,10 @@ def request_url_verify_handler(req_data: UrlVerificationEvent):
 def message_receive_event_handler(req_data: MessageReceiveEvent):
     """事件 接收消息-`im.message.receive_v1`的具体处理"""
     user_id = req_data.event.sender.sender_id.user_id
-    message = req_data.event.message.__dict__
-    sender = req_data.event.sender.__dict__
+    message = obj_2_dict(req_data.event.message)
+    sender_id = obj_2_dict(req_data.event.sender.sender_id)
 
-    _create_command_message_response(user_id=user_id,message=message,sender=sender)
+    _create_command_message_response(user_id=user_id,message=message,sender_id=sender_id)
 
     return jsonify()
 
@@ -157,13 +157,13 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
 
     if event_key == 'custom_menu.inspect.items':
     #获取全部物品类型，配置映射
-        content = _create_message_card_date(object_id='0')
+        content = _create_message_card_date(object_id=0)
         _send_a_new_message_card(user_id, content)
     elif event_key == 'custom_menu.test':
         # 测试用
         # DocMetadata = cloud_api_client.query_docs_metadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
         # DEBUG_OUT(DocMetadata)
-        # content = _create_message_card_date(object_id='0')
+        # content = _create_message_card_date(object_id=0)
         # _send_a_new_message_card(user_id, content)
         pass
     
@@ -225,17 +225,17 @@ def card_action_event_handler(req_data: CardActionEvent):
                                 'type':'success',
                                 'content':'success: 已发送申请'
                             }                    
-                    _update_message_card(token, object_id='0', selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id=0, selectedObjectList=selectedObjectList)
             else:
                 if value.name == 'home':
-                    _update_message_card(token, object_id='0', selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id=0, selectedObjectList=selectedObjectList)
                 elif value.name == 'self':
-                    _update_message_card(token, object_id='-1', user_id=user_id, selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
                 elif value.name == 'object.inspect':
-                    _update_message_card(token, object_id=value.id, selectedObjectList=selectedObjectList)
+                    _update_message_card(token, object_id=int(value.id), selectedObjectList=selectedObjectList)
                 elif value.name == 'back':
                     if int(value.id) != 0: #主页时的返回按钮不可用
-                        _update_message_card(token, object_id=int(value.id)/1000, selectedObjectList=selectedObjectList)                        
+                        _update_message_card(token, object_id=int(value.id)//1000, selectedObjectList=selectedObjectList)                        
                 elif value.name == 'object.return':
                     toast = {
                         'type':'success',
@@ -262,7 +262,7 @@ def card_action_event_handler(req_data: CardActionEvent):
                     del selectedObjectList['oid'][index]
                 except ValueError:
                     pass
-            _update_message_card(token, object_id=int(event.action.value.oid)/1000, selectedObjectList=selectedObjectList)
+            _update_message_card(token, object_id=int(event.action.value.oid)//1000, selectedObjectList=selectedObjectList)
 
 
     request_data = {
@@ -279,8 +279,9 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
     status = event.status
     applicant_user_id = instance.get('data').get('timeline')[0].get('user_id')
     #TODO:同意和拒绝的结构不一样，现在写的是不好的解决办法
-    operator_user_id = instance.get('data').get('timeline')[-1].get('user_id') if \
-                instance.get('data').get('timeline')[-1].get('user_id') else instance.get('data').get('timeline')[-2].get('user_id')
+    operator_user_id = (instance.get('data').get('timeline')[-1].get('user_id')
+                        if instance.get('data').get('timeline')[-1].get('user_id') 
+                        else instance.get('data').get('timeline')[-2].get('user_id'))
     if instance.get('data').get('approval_name') == "物品领用":
         if status in ('APPROVED', 'REJECTED','CANCELED','DELETED'): 
             form = ujson.loads(instance.get('data').get('form'))
@@ -291,14 +292,16 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
             applicant_name = management.get_member(applicant_user_id).get('name')
             if status in ('REJECTED','CANCELED','DELETED'): 
                 for oid in params['objectList']['oid']:
-                    management.set_item_state(oid=oid,operater_user_id=operator_user_id,operation=status,\
-                                            useable=1,wis="仓库",do=params['do'])
-                logging.info(f"审批：{operator_user_id}拒绝对{params['objectList']['oid']}的申请")
+                    management.set_item_state(oid=oid,operater_user_id=operator_user_id,
+                                              operation=status,useable=1,wis="仓库",do=params['do'])
+                logging.info("审批：%s拒绝对 %s 的申请" % (
+                             operator_user_id, params['objectList']['oid']))
             elif status == 'APPROVED':
                 for oid in params['objectList']['oid']:
-                    management.set_item_state(oid=oid,operater_user_id=operator_user_id,operation=status,\
-                                            useable=0,wis=applicant_name,do=params['do'])
-                logging.info(f"审批：{operator_user_id}同意对{params['objectList']['oid']}的申请")
+                    management.set_item_state(oid=oid,operater_user_id=operator_user_id,
+                                              operation=status,useable=0,wis=applicant_name,do=params['do'])
+                logging.info("审批：%s同意对 %s 的申请" % (
+                             operator_user_id, params['objectList']['oid']))
 
 
     return jsonify()
@@ -318,22 +321,21 @@ def callback_event_handler():
         假如redis中没相应数据,存储,并跳转到event_manager获取到事件/回调对应的处理函数
     """
     requests = request.json
-    # DEBUG_OUT(data=requests)
+    DEBUG_OUT(data=requests)
     if requests.get('uuid'):  #回调
-        logging.info(f"fetch request,uuid:{requests['uuid']}")
+        logging.info("fetch request,uuid:%s" % requests['uuid'])
     elif requests.get("event"): #事件
         event_id = requests.get('header').get('event_id')
         create_time = requests.get('header').get('create_time')
         #使用redis监测重复请求
         if redis_client.exists(event_id): #请求已处理，跳过
-            logging.error(f"This request has been handled. event_id:{event_id}")
+            logging.error("This request has been handled. event_id:%s" % event_id)
             return jsonify()
         else:
             redis_client.set(event_id, create_time, ex=3600)
-            logging.info(f"fetch request,event_id:{event_id}")
-            management.insert_request(event_id,create_time)
+            logging.info("fetch request,event_id:%s" % event_id)
     else:
-        logging.info(f"request={requests}")
+        logging.info("request=%s" % requests)
 
     event_handler, event = event_manager.get_handler_with_event(VERIFICATION_TOKEN, ENCRYPT_KEY)
     # 运行协程并返回响应
@@ -349,101 +351,13 @@ def msg_error_handler(ex):
     )
     return response
 
-@app.before_first_request
-def search_contact_to_add_members():
-    """
-    (初始化)通过通讯录获取用户列表并将用户信息装入数据库members表中
-
-    使用`获取通讯录授权范围`api获取用户列表    
-        该api只能获取直属于组织的用户列表，因此需要调整组织架构让目标用户直属于组织;
-        或者 加点代码递归搜索组织下各部门的用户列表
-    """
-    try:
-        user_ids = contact_api_client.fetch_scopes(user_id_type='user_id').get('data').get('user_ids')
-        #校验md5值，检测是否有变化
-        list_string = ''.join(map(str, user_ids))
-        MD5remote = hashlib.md5()
-        MD5remote.update(list_string.encode('utf-8'))
-        MD5remote = MD5remote.hexdigest()
-
-        MD5local = management.fetch_contact_md5()
-
-        if MD5local != MD5remote:
-            items = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id').get('data').get('items')
-            user_list = list()
-            for item in items:
-                user_list.append({
-                    'name':item['name'],
-                    'user_id':item['user_id']
-                })
-            management.add_member_batch(user_list)
-            management.update_contact_md5(MD5remote)
-            logging.info("add members from contact.")
-        else:
-            logging.info("skip add members from contact.")
-    except Exception as e:
-        raise Exception(f"尝试通过通讯录初始化用户列表失败，请重试\n{e}")
-
-@app.before_first_request
-def get_items_by_sheets():
-    """
-    (初始化)从电子表格中获取物品数量.
-
-    目标电子表格:   ITEM_SHEET_TOKEN
-    目标工作表：    SHEET_ID_TOTAL
-    """
-    #校验修改时间，检测是否有变化
-    try:
-        DocMetadata = cloud_api_client.query_docs_metadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
-        if not DocMetadata:
-            raise Exception(f"ITEM_SHEET_TOKEN:{ITEM_SHEET_TOKEN} 无法找到")
-        
-        latest_modify_time_remote = DocMetadata[0].get('latest_modify_time') #取[0]是因为使用token只会搜到一个文件
-        latest_modify_time_local = management.fetch_itemSheet_md5()
-
-        #如果物资表修改过（数据库数据过时），重新初始化物资数据库
-        if latest_modify_time_local != latest_modify_time_remote:
-            sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_TOTAL, "A2:D")
-            if not sheet_date.get('data'):
-                raise Exception(f"SHEET_ID_TOTAL:{SHEET_ID_TOTAL} 无法找到")
-            
-            item_list = sheet_date.get('data').get('valueRange').get('values')
-            logging.info('add item by sheet')
-            for item in item_list:
-                category_name = item[0]
-                item_name = item[1]
-                item_num_total = item[2] if item[2] else 0
-                item_num_broken = item[3] if item[3] else 0
-                management.add_items_until_limit(name=item_name, category_name=category_name, num=item_num_total, num_broken=item_num_broken)
-            #虽然函数名是转换成md5，但不转也能直接用
-            management.update_itemSheet_md5(latest_modify_time_remote)
-        else:
-            logging.info('skip add item by sheet')
-    except Exception as e:
-        raise Exception(f"{e}\n如需通过电子表格初始化数据库，请创建一个电子表格，按格式填入值后，确认`settings.json`中['sheet']:['token']和['sheet_id_TOTAL']是否正确。否则注释掉getItemsBySheets()")
-
-@app.before_first_request
-def sub_approval_event(): 
-    """
-    (初始化)订阅审批事件
-
-    和其他事件不同，审批需要主动订阅才会反馈数据
-        只能订阅一次，因此第一次初始化后会一直弹subscription existed异常
-        确认订阅成功后，你可以注释掉它
-    """
-    try:
-        approval_api_event.subscribe(APPROVAL_CODE)
-        logging.info(f"成功订阅审批事件{APPROVAL_CODE}")
-    except:
-        logging.info("subApprovalEvent() 只能订阅一次，因此你完全可以注释掉它")
-
 '''
 private function
 '''
 @celery_task
 def _update_message_card(
     token: str, 
-    object_id: str | None = None, 
+    object_id: int | None = None, 
     user_id: str | None = None, 
     target: str | None = None, 
     selectedObjectList: list | None = None
@@ -454,7 +368,7 @@ def _update_message_card(
     data = _create_message_card_date(object_id, user_id, 
                                       target, selectedObjectList)
     if data:
-        logging.info(f"更新卡片token:{token}")
+        logging.info("更新卡片token: %s" % token)
         message_api_client.delay_update_message_card(token, data)
 
 @celery_task
@@ -467,22 +381,22 @@ def _send_a_new_message_card(user_id: str, content: dict):
     try:
         alive_card_id = management.is_alive_card(user_id)
         if alive_card_id:
-            logging.info(f"撤回与 {user_id} 的消息卡片{alive_card_id}")
-            management._update_message_card(user_id)
+            logging.info("撤回与 %s 的消息卡片 %s" % (user_id,alive_card_id))
+            management.update_card(user_id)
             message_api_client.recall(alive_card_id)
 
         result = message_api_client.send_interactive_with_user_id(user_id, content)
         message_id = result.get('data').get('message_id')
         create_time = result.get('data').get('create_time')
-        logging.info(f"向 {user_id} 发送新消息卡片{message_id}")
-        management._update_message_card(user_id,message_id,create_time)
+        logging.info("向 %s 发送新消息卡片 %s" % (user_id,message_id))
+        management.update_card(user_id,message_id,create_time)
     except Exception as e:
-        logging.error(f"{e}")
+        logging.error("发送消息失败: %s" % e)
 
 def _create_message_card_date(
         object_id: int, 
-        user_id: str, 
-        target: str, 
+        user_id: str | None = None, 
+        target: str | None = None, 
         selectedObjectList: dict[str, list] | None = None
     ):
     """
@@ -495,7 +409,6 @@ def _create_message_card_date(
         '3':{'CARD_JSON':CARD_DISPLAY_JSON, 'title':"物资仓库", 'param1':'ID', 'param2':'名称', 'param3':'状态'},
         '4':{'CARD_JSON':CARD_DISPLAY_JSON, 'title':"物品总览", 'param1':'ID', 'param2':'名称', 'param3':'数量'},
     }
-    _father_id = str(object_id)
     # 获取对应的表格式id
     if object_id == -2:
         title_id = '4'
@@ -507,6 +420,7 @@ def _create_message_card_date(
         title_id = '2'
     else:
         title_id = '3'
+    _father_id = str(object_id if object_id > 0 else 0)
     _id = object_id
 
     # 如果不存在物品选择列表，则初始化
@@ -519,12 +433,12 @@ def _create_message_card_date(
     # 标题和列名
     values = {
         'title': title_map[title_id]['title'],
-        'father_id':str(_father_id)
+        'father_id':_father_id
     }
     title_text = (
         f"       "
-        f"<font color=blue>{format_with_margin(title_map[title_id]['param1'],10)}</font>  "
-        f"<font color=red>{format_with_margin(title_map[title_id]['param3'],4)}</font>  "
+        f"<font color=blue>{format_with_margin(title_map[title_id]['param1'],10)}</font> "
+        f"<font color=red>{format_with_margin(title_map[title_id]['param3'],8)}</font> "
         f"<font color=green>{format_with_margin(title_map[title_id]['param2'],20)}</font>"
     )
     values['title_text']=title_text
@@ -558,8 +472,8 @@ def _create_message_card_date(
                         display_target = 'object' #仅对搜索具体oid的操作以对象方式呈现
                     elif int(target)>1000: #name_id
                         _list = management.get_list(name_id=target)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.error("%s" % e)
             #同时按名称搜索相关物品
             if display_target == 'list':
                 if not _list:
@@ -567,8 +481,8 @@ def _create_message_card_date(
                 else:
                     try:
                         _list.update(management.get_list(name=target))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.error("%s" % e)
         #构建参数列表
         if display_target == 'list':
             object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_)} 
@@ -580,9 +494,9 @@ def _create_message_card_date(
         if object_list: #如有相关数据-展示循环容器-勾选器
             for obj in object_list:
                 checker_text = (
-                    f"<font color=blue>{format_with_margin(obj['param1'],10)}</font>  "
-                    f"<font color=red>{format_with_margin(obj['param3'],10)}</font>  "
-                    f"<font color=green>{format_with_margin(obj['param2'],20,6)}</font>"
+                    f"<font color=blue>{format_with_margin(obj['param1'],10)}</font>"
+                    f"<font color=red>{format_with_margin(obj['param3'],8)}</font>"
+                    f"<font color=green>{format_with_margin(obj['param2'],12)}</font>"
                 )
                 obj['checker_text'] = checker_text
                 repeat_elements = copy.deepcopy(CARD_DISPLAY_REPEAT_ELEMENTS_JSON)
@@ -594,8 +508,10 @@ def _create_message_card_date(
                         confirm_data['text']['content'] = f"你是否要归还{obj['name']} oid:{obj['oid']}"
                         repeat_elements['button_area']['buttons'][0]['value']['name']="object.return"
                     else:   #展示物品详细信息-修改按键值为空
-                        confirm_data['text']['content'] = f"{obj['name']} oid:{obj['oid']}\
-                            当前位置:{obj['wis']}\t当前状态:{obj['useable']}\n备注：{obj['do']}"
+                        confirm_data['text']['content'] = (
+                            f"{obj['name']} oid:{obj['oid']}\n"
+                            f"当前位置:{obj['wis']}\t当前状态:{obj['useable']}\n"
+                            f"备注：{obj['do']}")
                         repeat_elements['button_area']['buttons'][0]['value']['name']="none"
                     repeat_elements['button_area']['buttons'][0]['confirm']=confirm_data
                     #同时开启勾选器允许勾选
@@ -656,7 +572,7 @@ def _create_approval_about_apply_items(
 
     approval_api_event.create_instance(approval_code=APPROVAL_CODE, 
                                        user_id=user_id, form=ujson.dumps(form))
-    logging.info(f"发送审批,{user_id} 申请 {selectedObjectList['oid']}")
+    logging.info("发送审批,%s 申请 {selectedObjectList['oid']}" % user_id)
 
 '''
 user commands
@@ -664,8 +580,8 @@ user commands
 @celery_task
 def _create_command_message_response(
     user_id: str,
-    message: str,
-    sender: str
+    message: dict,
+    sender_id: dict
 ):
     """
     生成命令消息的回复
@@ -696,7 +612,7 @@ def _create_command_message_response(
         'help':     {'command':_command_get_help,        'needed_root':False},
         'op':       {'command':_command_add_op,          'needed_root':True},
         'deop':     {'command':_command_delete_op,       'needed_root':True},
-        'lsop':     {'command':_command_list_op,         'needed_root':False},
+        'lsop':     {'command':_command_list_op,         'needed_root':True},
         'search':   {'command':_command_search_id,       'needed_root':False},
         'return':   {'command':_command_return_item,     'needed_root':False},
         'save':     {'command':_command_save,            'needed_root':True},
@@ -738,9 +654,8 @@ def _create_command_message_response(
                         pairs = re.findall(kv_pattern, key_value_pairs)
                         params = {key: value.strip("'") for key, value in pairs}
                     #进行相应操作
-                    if (not command_map[command]['needed_root']) or \
-                        (command_map[command]['needed_root'] and management.is_user_root(user_id)):
-                        reply_text = command_map[command]['command'](reply_map, message, sender, object, params)
+                    if not command_map[command]['needed_root'] or management.is_user_root(user_id):
+                        reply_text = command_map[command]['command'](reply_map, message, sender_id, object, params)
                     else:
                         reply_text = reply_map['permission_denied']
     if reply_text not in ('', None) :
@@ -749,7 +664,7 @@ def _create_command_message_response(
         }
         message_api_client.send_text_with_user_id(user_id,content)
 
-def _command_add_object(reply_map, message, sender, object, params):
+def _command_add_object(reply_map, message, sender_id, object, params):
     """
     (指令)添加物品
 
@@ -780,11 +695,12 @@ def _command_add_object(reply_map, message, sender, object, params):
                 management.add_category(params=params)
             return reply_map['success']
         
-def _command_delete_object(reply_map, message, sender, object, params):
+def _command_delete_object(reply_map, message, sender_id, object, params):
     """
     (指令)删除物品
 
     指令参数参考`_command_get_help`
+    TODO:目前有点问题，尝试删除不存在的项并不会报错
     """
     necessary_param_map = {
         'item':['id',],
@@ -811,44 +727,47 @@ def _command_delete_object(reply_map, message, sender, object, params):
         
             return reply_map['success']
 
-def _command_add_op(reply_map, message, sender, object, params):
+def _command_add_op(reply_map, message, sender_id, object, params):
     """
     (指令)设置管理员
 
     指令参数参考`_command_get_help`
     """
     user_id = None
-    for mention in message['mentions']:
-        if mention.get('key') == object:
-            user_id = mention['id']['user_id']
-            break
-    
-    if not management.get_member(user_id) if user_id else None:
+    if message.get('mentions'):
+        for mention in message['mentions']:
+            if mention.get('key') == object:
+                user_id = mention['id']['user_id']
+                object =  mention['name']
+                break
+        
+    if not user_id or not management.get_member(user_id):
         return reply_map['invalid_object'] % f'无法识别的用户{object}'
 
     management.set_member_root(user_id)
     return reply_map['success']
 
-def _command_delete_op(reply_map, message, sender, object, params):
+def _command_delete_op(reply_map, message, sender_id, object, params):
     """
     (指令)删除管理员
 
     指令参数参考`_command_get_help`
     """
     user_id = None
-    for mention in message['mentions']:
-        if mention['key'] == object:
-            user_id = mention['id']['user_id']
-            break
+    if message.get('mentions'):
+        for mention in message['mentions']:
+            if mention['key'] == object:
+                user_id = mention['id']['user_id']
+                break
     
-    if not management.get_member(user_id) if user_id else None:
+    if not user_id or not management.get_member(user_id):
         return reply_map['invalid_object'] % f'无法识别的用户{object}'
     
     #TODO：id不在表中如何解决？
     management.set_member_unroot(user_id)
     return reply_map['success']
 
-def _command_list_op(reply_map, message, sender, object, params):
+def _command_list_op(reply_map, message, sender_id, object, params):
     """
     (指令)列出管理员名单
 
@@ -857,31 +776,29 @@ def _command_list_op(reply_map, message, sender, object, params):
     result = management.get_members_root()
     return ujson.dumps(result, ensure_ascii=False) if result else '当前暂无管理员'
 
-def _command_search_id(reply_map, message, sender, object, params):
+def _command_search_id(reply_map, message, sender_id, object, params):
     """
     (指令)搜索id
 
     指令参数参考`_command_get_help`
     """
-    if can_convert_to_int(object):
+    if not can_convert_to_int(object):
         return reply_map['invalid_object'] % f"/search {{id}}<-int不存在"
     
     #TODO:异常处理
     try:
-        user_id = sender['sender_id']['user_id']
-        content = {
-                'type':'template',
-                'data':_create_message_card_date(object_id=object)
-            }
+        DEBUG_OUT(data=sender_id)
+        user_id = sender_id['user_id']
+        content = _create_message_card_date(object_id=int(object))
         _send_a_new_message_card(user_id, content)
     
         return None
     except Exception as e:
         return f"失败 {e}"
 
-def _command_return_item(reply_map, message, sender, object, params):
+def _command_return_item(reply_map, message, sender_id, object, params):
     """
-    (指令)删除物品
+    (指令)归还物品
 
     指令参数参考`_command_get_help`
     """
@@ -890,14 +807,14 @@ def _command_return_item(reply_map, message, sender, object, params):
     
     #TODO:异常处理
     try:
-        user_id = sender['sender_id']['user_id']
+        user_id = sender_id['user_id']
         result = management.return_item(user_id,int(object))
 
         return result
     except Exception as e:
         return f"失败 {e}"
 
-def _command_save(reply_map, message, sender, object, params):
+def _command_save(reply_map, message, sender_id, object, params):
     """
     (指令)存储当前数据库中的物资(详细)信息到电子表格中.
     """
@@ -935,14 +852,15 @@ def _command_save(reply_map, message, sender, object, params):
             spreadsheet_api_client.write_date_to_a_single_range(
                 ITEM_SHEET_TOKEN,SHEET_ID_ITEM,f"A{start_line}:F{end_line-1}",values)
             logging.info(
-                f"已保存 {category_name} 类型的信息到电子表格中，行数{start_line}:{end_line-1}")
+                "已保存 %s 类型的信息到电子表格中，行数%d:%d" %
+                (category_name,start_line, end_line-1))
             start_line = end_line
         return reply_map['success']
     except Exception as e:
         #TODO:异常处理
         return f"失败 {e}"
 
-def _command_load(reply_map, message, sender, object, params):
+def _command_load(reply_map, message, sender_id, object, params):
     """
     (指令)从设定的电子表格中读取物资(详细)信息存储当前数据库中.
     """
@@ -961,30 +879,31 @@ def _command_load(reply_map, message, sender, object, params):
     except Exception as e:
         return f"失败 {e}"
 
-def _command_get_help(reply_map, message, sender, object, params):
+def _command_get_help(reply_map, message, sender_id, object, params):
     """返回指令帮助菜单."""
     margin = 10
-    return f'''\
-    机器人命令指南：
-    格式：/command [options] [param1=value] [param2=value] ...
-    当前已实现命令commands，标注*号的需要拥有管理权限:
-    {'help':<{margin}} \t查看《机器人命令指南》
-    {'*add {{item|list|category}} {{params}}':<{margin}} \t往数据库中插入数据,如父项不存在会自动创建
-        {'':<{margin}} item\t 具体物品。params:{{'name'|'name_id'}},['category_name','category_id','num']),
-        {'':<{margin}} list\t 物品列表。params:'name',{{'category_name'|'category_id}}),
-        {'':<{margin}} category\t 物品类型。params:'category_name'
-    {'*del {{item|list|category}} {{params}}':<{margin}} \t删除数据库中某条数据,如子项中存在数据则无法删除
-        {'':<{margin}} item\t 具体物品。params:'id',
-        {'':<{margin}} list\t 物品列表。params:{{'name'|'id'}},
-        {'':<{margin}} category\t 物品类型。params:{{'name'|'id'}}
-    {'op {{@user_name}}':<{margin}} \t给予管理员权限
-    {'deop {{@user_name}}':<{margin}} \t取消管理员权限
-    {'lsop {{@user_name}}':<{margin}} \t列出管理员列表
-    {'search {{id}}':<{margin}} \t搜索id对应的项
-    {'return {{id}}':<{margin}} \t归还id对应的物品,只能还自己的，管理员可以帮忙归还
-    {'save':<{margin}} \t(仅管理员)同步物资情况到指定的电子表格
-    {'load':<{margin}} \t(仅管理员)同步电子表格中物资情况到数据库
-    '''
+    return (
+        "机器人命令指南：\n"
+        "格式：/command [options] [param1=value] [param2=value] ...\n"
+        "当前已实现命令commands，标注*号的需要拥有管理权限:\n"
+        f"{'help':<{margin}} \t查看《机器人命令指南》\n"
+        f"{'*add {{item|list|category}} {{params}}':<{margin}} \t往数据库中插入数据,如父项不存在会自动创建\n"
+            f"{'':<{margin}} item\t 具体物品。params:{{'name'|'name_id'}},['category_name','category_id','num']),\n"
+            f"{'':<{margin}} list\t 物品列表。params:'name',{{'category_name'|'category_id}}),\n"
+            f"{'':<{margin}} category\t 物品类型。params:'category_name'\n"
+        f"{'*del {{item|list|category}} {{params}}':<{margin}} \t删除数据库中某条数据,如子项中存在数据则无法删除\n"
+            f"{'':<{margin}} item\t 具体物品。params:'id',\n"
+            f"{'':<{margin}} list\t 物品列表。params:{{'name'|'id'}},\n"
+            f"{'':<{margin}} category\t 物品类型。params:{{'name'|'id'}}\n"
+        f"{'op {{@user_name}}':<{margin}} \t给予管理员权限\n"
+        f"{'deop {{@user_name}}':<{margin}} \t取消管理员权限\n"
+        f"{'lsop {{@user_name}}':<{margin}} \t列出管理员列表\n"
+        f"{'search {{id}}':<{margin}} \t搜索id对应的项\n"
+        f"{'return {{id}}':<{margin}} \t归还id对应的物品,只能还自己的，管理员可以帮忙归还\n"
+        f"{'save':<{margin}} \t(仅管理员)同步物资情况到指定的电子表格\n"
+        f"{'load':<{margin}} \t(仅管理员)同步电子表格中物资情况到数据库\n"
+    )
+    
 
 if __name__ == "__main__":
     # 启动服务
