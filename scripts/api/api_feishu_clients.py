@@ -77,6 +77,9 @@ class MessageApiClient(ApiClient):
 
     def send_text_with_user_id(self, user_id: str, content: dict) -> dict:
         """通过user_id向用户发送文本."""
+        content = {
+            'text':content
+        }
         return self.send("user_id", user_id, "text", content)
 
     def send_interactive_with_user_id(self, user_id: str, content: dict) -> dict:

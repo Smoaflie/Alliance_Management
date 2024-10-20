@@ -159,11 +159,12 @@ class ApiManagement(object):
                 'useable': 物品状态，具体内容参考`useable_map`
                 'wis': 物品当前位置
                 'do': 物品备注，标示该物品的特点(比如'CAN口损坏'的主控板)
+                'purpose': 用途，标示持有人使用它的目的，如果没有持有人则为"无"
             }
         """
-        r = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': []}
+        r = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': [], 'purpose': []}
         
-        
+        logging.error(info)
 
         for it in info:
             r['name'].append(name)
@@ -173,12 +174,14 @@ class ApiManagement(object):
                 r['useable'].append(self.useable_map.get(it[2], '未知'))
                 r['wis'].append(it[3] if it[3] not in ('null', None, '', 'None') else '未知')  
                 r['do'].append(it[4] if it[4] not in ('null', None, '', 'None') else '无')
+                r['purpose'].append(it[5] if it[5] not in ('null', None, '', 'None') else '无')
             else:
                 r['id'].append(info[0])  # 否则直接添加
                 r['father'].append(info[1])
                 r['useable'].append(self.useable_map.get(info[2], '未知'))
                 r['wis'].append(info[3] if info[3] not in ('null', None, '', 'None') else '未知')
                 r['do'].append(info[4] if info[4] not in ('null', None, '', 'None') else '无')
+                r['purpose'].append(info[5] if info[5] not in ('null', None, '', 'None') else '无')
                 break
         return r
     
@@ -194,6 +197,7 @@ class ApiManagement(object):
                 'useable': 物品状态，具体内容参考`useable_map`
                 'wis': 物品当前位置
                 'do': 物品备注，标示该物品的特点(比如'CAN口损坏'的主控板)
+                'purpose': 用途，标示持有人使用它的目的，如果没有持有人则为"无"
             }
         """
         info = []
@@ -221,6 +225,7 @@ class ApiManagement(object):
                 'useable': 物品状态，具体内容参考`useable_map`
                 'wis': 物品当前位置
                 'do': 物品备注，标示该物品的特点(比如'CAN口损坏'的主控板)
+                'purpose': 用途，标示持有人使用它的目的，如果没有持有人则为"无"
             }
         
         raise:
@@ -231,7 +236,7 @@ class ApiManagement(object):
             father = self.sql.fetchone('item_list', 'id', info[1])
             return self._return_itemTable_by_info(info, father[2])
         else:
-            raise ValueError(f"无法找到目标物品 oid:{str(oid)}") if info else None
+            raise ValueError(f"无法找到目标物品 oid:{str(oid)}")
 
     def get_items(
         self, 
@@ -257,6 +262,7 @@ class ApiManagement(object):
                 'useable': 物品状态，具体内容参考`useable_map`
                 'wis': 物品当前位置
                 'do': 物品备注，标示该物品的特点(比如'CAN口损坏'的主控板)
+                'purpose': 用途，标示持有人使用它的目的，如果没有持有人则为"无"
             }
         
         raise:
@@ -287,7 +293,7 @@ class ApiManagement(object):
             if not member_items:
                 raise ValueError(f"无法找到名下物品 user_name:{user_name}")
             name_id_map = {}
-            member_items_out = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': []}
+            member_items_out = {'name': [], 'id': [], 'father': [], 'useable': [], 'wis': [], 'do': [], 'purpose': []}
             for item in member_items:
                 oid     = item[0]
                 name_id = str(item[1])
@@ -304,6 +310,7 @@ class ApiManagement(object):
                 member_items_out['useable'].append(self.useable_map.get(item[2], '未知'))
                 member_items_out['wis'].append(item[3])
                 member_items_out['do'].append(item[4])
+                member_items_out['do'].append(item[5])
             
             return member_items_out
         else:
@@ -323,7 +330,11 @@ class ApiManagement(object):
             if not self.sql.fetchone('members', 'user_id', user['user_id']):
                 self.sql.insert('members', user)
 
-    def get_member(self, user_id: str) -> dict[str, list]:
+    def get_member(
+            self, 
+            user_id: str | None = None,
+            user_name: str | None = None
+        ) -> dict[str, list]:
         """"
         获取用户信息
 
@@ -337,7 +348,10 @@ class ApiManagement(object):
         raise:
             ValueError: 无法找到目标用户时抛出
         """
-        member = self.sql.fetchone('members', 'user_id', user_id)
+        if user_id:
+            member = self.sql.fetchone('members', 'user_id', user_id)
+        else:
+            member = self.sql.fetchone('members', 'name', user_name)
         if member:
             return {
                 'user_id': member[0],
@@ -658,7 +672,7 @@ class ApiManagement(object):
         self, 
         oid: int, 
         user_id: str, 
-        do: str | None = None
+        purpose: str | None = None
     ):
         """
         对物品发出申请
@@ -669,10 +683,10 @@ class ApiManagement(object):
         Args:
             user_id: 申请人user_id
             oid:    申请的物品对象oid
-            do:     申请用途
+            do:     申请备注(用途)
         """
         return self.set_item_state(oid=oid,operater_user_id=user_id,
-                                   operation='APPLY',useable=4,do=do)
+                                   operation='APPLY',useable=4,purpose=purpose)
     
     def set_item_state(
         self, 
@@ -681,7 +695,8 @@ class ApiManagement(object):
         operation: str | None = None,
         useable: int | None = None, 
         wis: str | None = None, 
-        do: str | None = None
+        do: str | None = None,
+        purpose: str | None = None
     ):
         """
         修改物品状态
@@ -695,15 +710,17 @@ class ApiManagement(object):
             useable: 修改后新状态值,参考useable_map
             wis:    修改后的物品位置
             do:     备注
+            purpose:    用途
         """
         self.sql.insert('logs', {'time':int(time.time()*1000),
                                  'userId':operater_user_id,
                                  'operation':operation,
                                  'object':oid,
-                                 'do':do})
+                                 'do':purpose})
         update_date = {}
         update_date['useable'] = useable
         update_date['wis'] = wis
+        update_date['purpose'] = purpose
         self.sql.update('item_info', ('id',oid), update_date)
 
     def return_item(
@@ -736,8 +753,8 @@ class ApiManagement(object):
             return "Error: 你不是该物品的持有者"
         else:
             self.set_item_state(operater_user_id=user_id,operation='RETURN',
-                                oid=oid,useable=1,wis='仓库',do='null')
-            return f'你{"帮忙" if member['root'] else ""}归还了物品 {item_info['name'][0]} oid:{oid}'
+                                oid=oid,useable=1,wis='仓库',purpose='无')
+            return f'你{"帮忙" if member['root'] and member['name']!=item_info['wis'][0] else ""}归还了物品 {item_info['name'][0]} oid:{oid}'
 
     def update_card(
         self, 

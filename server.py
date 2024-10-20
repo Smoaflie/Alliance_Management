@@ -11,6 +11,7 @@ from datetime import datetime
 from dotenv import load_dotenv, find_dotenv
 from celery import Celery
 from flask import Flask
+from flask import Blueprint
 from flask import jsonify
 from flask import request
 from functools import wraps
@@ -21,6 +22,7 @@ from scripts.utils import DEBUG_OUT
 from scripts.utils import format_with_margin
 from scripts.utils import can_convert_to_int
 from scripts.utils import replace_placeholders
+from webhooks import webhook_bp  # 导入您的蓝图
 from scripts.api.api_management import ApiManagement
 from scripts.api.api_feishu_clients import MessageApiClient
 from scripts.api.api_feishu_clients import SpreadsheetApiClient
@@ -39,6 +41,13 @@ init
 '''
 # 定义Flask实例
 app = Flask(__name__)
+# 注册蓝图
+"""
+在 Flask 中，蓝图（Blueprint） 是一种组织应用路由和处理逻辑的机制。
+它允许您将应用的不同部分拆分成多个独立的组件，并在应用中按需注册这些组件。
+这样做可以提高代码的可维护性、可复用性，并使得复杂的应用结构更加清晰。
+"""
+app.register_blueprint(webhook_bp)
 # 设置日志等级
 logging.basicConfig(level=logging.INFO)
 # 配置全局变量
@@ -52,6 +61,7 @@ with open('settings.json', 'r') as f:
     REDIS_HOST = settings.get('redis').get('host')
     REDIS_PORT = settings.get('redis').get('port')
     REDIS_DB = settings.get('redis').get('db')
+    ADMIN_USER_ID = settings.get('management').get('admin_user_id')
 with open('message_card.json', 'r') as f:
     card_json = ujson.loads(f.read())
     CARD_DISPLAY_JSON = card_json.get('display')
@@ -218,7 +228,7 @@ def card_action_event_handler(req_data: CardActionEvent):
                             }
 
                     else: #发送审批申请
-                        _create_approval_about_apply_items(user_id, selectedObjectList, event.action.form_value.Input_value)
+                        create_approval_about_apply_items(user_id, selectedObjectList, event.action.form_value.Input_value)
                         #清空选中物品列表
                         selectedObjectList = None
                         toast = {
@@ -275,14 +285,14 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
     """回调 审批实例状态变化-`approval_instance`的具体处理"""
     event = req_data.event
     
-    instance = approval_api_event.fetch_instance(event.instance_code)
-    status = event.status
-    applicant_user_id = instance.get('data').get('timeline')[0].get('user_id')
-    #TODO:同意和拒绝的结构不一样，现在写的是不好的解决办法
-    operator_user_id = (instance.get('data').get('timeline')[-1].get('user_id')
-                        if instance.get('data').get('timeline')[-1].get('user_id') 
-                        else instance.get('data').get('timeline')[-2].get('user_id'))
-    if instance.get('data').get('approval_name') == "物品领用":
+    if event.approval_code == APPROVAL_CODE:
+        instance = approval_api_event.fetch_instance(event.instance_code)
+        status = event.status
+        applicant_user_id = instance.get('data').get('timeline')[0].get('user_id')
+        #TODO:同意和拒绝的结构不一样，现在写的是不好的解决办法
+        operator_user_id = (instance.get('data').get('timeline')[-1].get('user_id')
+                            if instance.get('data').get('timeline')[-1].get('user_id') 
+                            else instance.get('data').get('timeline')[-2].get('user_id'))
         if status in ('APPROVED', 'REJECTED','CANCELED','DELETED'): 
             form = ujson.loads(instance.get('data').get('form'))
             params = {}
@@ -293,15 +303,15 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
             if status in ('REJECTED','CANCELED','DELETED'): 
                 for oid in params['objectList']['oid']:
                     management.set_item_state(oid=oid,operater_user_id=operator_user_id,
-                                              operation=status,useable=1,wis="仓库",do=params['do'])
+                                                operation=status,useable=1,wis="仓库",do=params['do'])
                 logging.info("审批：%s拒绝对 %s 的申请" % (
-                             operator_user_id, params['objectList']['oid']))
+                                operator_user_id, params['objectList']['oid']))
             elif status == 'APPROVED':
                 for oid in params['objectList']['oid']:
                     management.set_item_state(oid=oid,operater_user_id=operator_user_id,
-                                              operation=status,useable=0,wis=applicant_name,do=params['do'])
+                                                operation=status,useable=0,wis=applicant_name,do=params['do'])
                 logging.info("审批：%s同意对 %s 的申请" % (
-                             operator_user_id, params['objectList']['oid']))
+                                operator_user_id, params['objectList']['oid']))
 
 
     return jsonify()
@@ -484,6 +494,7 @@ def _create_message_card_date(
                     except Exception as e:
                         logging.error("%s" % e)
         #构建参数列表
+        #TODO:zip最大支持5个列表，无法显示purpose属性
         if display_target == 'list':
             object_list =[{'param1': id_, 'param2': name_, 'param3': str(total_)} 
                     for id_, name_, total_ in zip(_list['id'], _list['name'], _list['total'])] if _list else None
@@ -511,7 +522,7 @@ def _create_message_card_date(
                         confirm_data['text']['content'] = (
                             f"{obj['name']} oid:{obj['oid']}\n"
                             f"当前位置:{obj['wis']}\t当前状态:{obj['useable']}\n"
-                            f"备注：{obj['do']}")
+                            f"备注：{obj['do']}\n")
                         repeat_elements['button_area']['buttons'][0]['value']['name']="none"
                     repeat_elements['button_area']['buttons'][0]['confirm']=confirm_data
                     #同时开启勾选器允许勾选
@@ -549,10 +560,10 @@ def _create_message_card_date(
     return result_data
 
 @celery_task
-def _create_approval_about_apply_items(
+def create_approval_about_apply_items(
     user_id: str, 
-    selectedObjectList: list, 
-    do: str = 'null'
+    selectedObjectList: dict, 
+    purpose: str = 'null'
 ):
     """
     创建物品审批实例
@@ -561,9 +572,9 @@ def _create_approval_about_apply_items(
     审批定义应按照`配置指南`在控制台创造,特别是审批定义名和自定义id
     """
     for oid in selectedObjectList['oid']:
-        management.apply_item(user_id=user_id, oid=int(oid), do=do)
+        management.apply_item(user_id=user_id, oid=int(oid), purpose=purpose)
     form=[
-        {'id':'do','type':'textarea','value':do if do else "None"},
+        {'id':'do','type':'textarea','value':purpose if purpose else "None"},
         {'id':'date','type':'date',"value": 
          f"{datetime.fromtimestamp(time.time()).strftime("%Y-%m-%dT%H:%M:%S+08:00")}"},
         {'id':'objectList','type':'textarea', 
@@ -659,10 +670,7 @@ def _create_command_message_response(
                     else:
                         reply_text = reply_map['permission_denied']
     if reply_text not in ('', None) :
-        content = {
-            'text':reply_text
-        }
-        message_api_client.send_text_with_user_id(user_id,content)
+        message_api_client.send_text_with_user_id(user_id,reply_text)
 
 def _command_add_object(reply_map, message, sender_id, object, params):
     """

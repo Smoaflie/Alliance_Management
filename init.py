@@ -227,12 +227,14 @@ if __name__ == '__main__':
             # `useable` 是否可用    1可用，0已借出，2维修中，3报废，4申请中
             # `wis` 当前位置  
             # `do` 备注
+            # `purpose` 用途
         'item_info': '''CREATE TABLE `item_info` (
           `id` int(10) UNSIGNED NOT NULL PRIMARY KEY,
           `father` int(255) UNSIGNED NOT NULL,
           `useable` int(2) NOT NULL DEFAULT 1,
           `wis` text,
           `do` text,
+          `purpose` text,
           FOREIGN KEY (father) REFERENCES item_list(id)
           ON UPDATE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
@@ -250,6 +252,21 @@ if __name__ == '__main__':
           `card_message_id` text,
           `card_message_create_time` text
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
+        #  存储工单信息
+            # 'id' 索引
+            # 'time' 提交时间
+            # 'type' 工单类型
+            # 'submitter' 提交人
+            # 'info' 具体内容
+            # 'state' 状态
+        # 'issues': '''CREATE TABLE `members` (
+        #   `id` text NOT NULL,
+        #   `time` text NOT NULL,
+        #   `type` text NOT NULL,
+        #   `submitter` text NOT NULL,
+        #   `info` text,
+        #   `state` text NOT NULL
+        # ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
     }
     # 逐个检查并创建表
     for table_name, create_sql in tables.items():
