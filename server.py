@@ -845,9 +845,9 @@ def _command_save(reply_map, message, sender_id, object, params):
                 if not items_info:
                     continue
                 end_line += len(items_info['id'])
-                for oid,useable,wis,do in zip(
+                for oid,useable,wis,do,purpose in zip(
                     items_info['id'],items_info['useable'],
-                    items_info['wis'],items_info['do']
+                    items_info['wis'],items_info['do'],items_info['purpose']
                 ):
                     value =[]
                     value.append(oid)
@@ -856,9 +856,10 @@ def _command_save(reply_map, message, sender_id, object, params):
                     value.append(useable)
                     value.append(wis)
                     value.append(do)
+                    value.append(purpose)
                     values.append(value)
             spreadsheet_api_client.write_date_to_a_single_range(
-                ITEM_SHEET_TOKEN,SHEET_ID_ITEM,f"A{start_line}:F{end_line-1}",values)
+                ITEM_SHEET_TOKEN,SHEET_ID_ITEM,f"A{start_line}:G{end_line-1}",values)
             logging.info(
                 "已保存 %s 类型的信息到电子表格中，行数%d:%d" %
                 (category_name,start_line, end_line-1))
@@ -873,7 +874,7 @@ def _command_load(reply_map, message, sender_id, object, params):
     (指令)从设定的电子表格中读取物资(详细)信息存储当前数据库中.
     """
     try:
-        sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:F")
+        sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:G")
         items_info = sheet_date['data']['valueRange']['values']
         management.del_all()
         for item_info in items_info:
@@ -882,7 +883,9 @@ def _command_load(reply_map, message, sender_id, object, params):
                                 category_name=item_info[2],
                                 useable=item_info[3],
                                 wis=item_info[4],
-                                do=item_info[5])
+                                do=item_info[5],
+                                purpose=item_info[6]
+                                )
         return reply_map['success']
     except Exception as e:
         return f"失败 {e}"

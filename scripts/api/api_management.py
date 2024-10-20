@@ -403,7 +403,8 @@ class ApiManagement(object):
         oid: int | None = None,
         useable: int | None = None,
         wis: str | None = None,
-        do: str | None = None
+        do: str | None = None,
+        purpose: str | None = None
     ):
         """
         添加物品到数据库中
@@ -465,11 +466,12 @@ class ApiManagement(object):
             if num_broken:
                 for i in range(num_broken):
                     self.sql.update('item_info', ('id',i+new_id), {'useable':3})
-        elif oid and wis and do:
+        elif oid and wis and do and purpose:
             insert_data['id'] = name_id*1000 + int(oid)%1000
             insert_data['useable'] = next((key for key, value in self.useable_map.items() if value == useable), 5)
             insert_data['wis'] = wis
             insert_data['do'] = do
+            insert_data['purpose'] = purpose
             self.sql.insert('item_info', insert_data)
 
     def add_items_until_limit(
