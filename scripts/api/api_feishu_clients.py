@@ -351,7 +351,8 @@ class ContactApiClient(ApiClient):
     def fetch_scopes(
             self, 
             user_id_type: str = 'open_id', 
-            department_id_type: str = 'open_department_id'
+            department_id_type: str = 'open_department_id',
+            page_token : str | None = None
         ) -> dict:
         """
         获取通讯录授权范围.
@@ -371,6 +372,7 @@ class ContactApiClient(ApiClient):
         params = {
             'user_id_type': user_id_type,
             'department_id_type': department_id_type,
+            "page_token": page_token
         }
         resp = self._send_with_retries(
             requests.get,

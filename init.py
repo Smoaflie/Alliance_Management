@@ -58,7 +58,15 @@ def init_from_feishu():
             或者 加点代码递归搜索组织下各部门的用户列表
         """
         try:
-            user_ids = contact_api_client.fetch_scopes(user_id_type='user_id').get('data').get('user_ids')
+            user_ids = []
+            page_token = None
+            while(True):
+                result = contact_api_client.fetch_scopes(user_id_type='user_id', page_token=page_token)
+                user_ids += result.get('data').get('user_ids')
+                page_token = result.get('data').get("page_token")
+                if not page_token:
+                    break
+
             #校验md5值，检测是否有变化
             list_string = ''.join(map(str, user_ids))
             MD5remote = hashlib.md5()
