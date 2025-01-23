@@ -1,7 +1,6 @@
 import hashlib
 import logging
 from app import app
-from app import database
 from scripts.api.feishu_api import (
     MessageApiClient,
     SpreadsheetApiClient,
@@ -14,6 +13,9 @@ from scripts.api.feishu_api import (
 from scripts.utils import load_file
 
 logger = logging.getLogger(__name__)
+
+database = app.config.get("database")
+redis_client = app.config.get('redis_client')
 
 feishu_config = app.config.get("feishu")
 # 飞书后台配置

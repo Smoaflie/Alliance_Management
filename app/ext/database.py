@@ -25,8 +25,7 @@ class Database(MySql) :
         password = config.get('password')
         super().__init__(host, port, user, password)
         self.db = config.get('db')
-
-        self.init_database()
+        super().set_default_db(self.db)
 
     def get_categories(self) -> dict:
         """

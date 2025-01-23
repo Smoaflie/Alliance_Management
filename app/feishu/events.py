@@ -1,12 +1,12 @@
-
 import ujson
 import logging
 
 from flask import jsonify,request,Blueprint
 from requests import HTTPError
 
-from app import database
-from app.extensions import rate_limit,celery_task,redis_client
+from app.decorators import rate_limit
+from app.feishu.config import database
+from app.feishu.config import redis_client
 from app.feishu.config import (
     VERIFICATION_TOKEN,
     ENCRYPT_KEY,
@@ -18,6 +18,13 @@ from app.feishu.config import (
     approval_api_event,
     event_manager,
 )
+from app.feishu.commands import (
+    create_command_message_response,
+    _create_message_card_date,
+    send_a_new_message_card,
+    _update_message_card,
+    create_approval_about_apply_items
+)
 from scripts.utils import (
     obj_2_dict,
     DEBUG_OUT,
@@ -28,13 +35,6 @@ from scripts.api.feishu_api import (
     BotMenuClickEvent,
     CardActionEvent,
     ApprovalInstanceEvent,
-)
-from app.feishu.commands import (
-    create_command_message_response,
-    _create_message_card_date,
-    send_a_new_message_card,
-    _update_message_card,
-    create_approval_about_apply_items
 )
 
 '''
@@ -143,17 +143,19 @@ def card_action_event_handler(req_data: CardActionEvent):
     user_id = event.operator.user_id
     alife_card_id = database.is_alive_card(user_id)
     current_card_id = event.context.open_message_id
+    tag = event.action.tag
     toast = None
-    logger.info("user_id:%s, alife_card_id:%s, current_card_id:%s" % (user_id, alife_card_id, current_card_id))
+    logger.info("user_id:%s, tag:%s, card_id:%s" % (user_id, tag, current_card_id))
 
     if alife_card_id and alife_card_id!=current_card_id:
+        logger.info("The card is too old, try to recall it.")
         message_api_client.recall(current_card_id)
         toast = {
                 'type':'error',
                 'content':'Error: 该消息卡片已过期，请使用新卡片'
             }
     else:
-        if event.action.tag == 'button':
+        if tag == 'button':
             value = event.action.value
             selectedObjectList=value.selectedObjectList.__dict__
             #将表单按钮与其余按钮进行区分
@@ -208,13 +210,13 @@ def card_action_event_handler(req_data: CardActionEvent):
                     }
                     database.return_item(user_id,value.object_param_1)
                     _update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
-        elif event.action.tag == 'input':
+        elif tag == 'input':
             input_value = event.action.input_value
             selectedObjectList = event.action.value.selectedObjectList.__dict__
             
             if event.action.name == "input.search":
                 _update_message_card(token, object_id=-2, target=input_value, selectedObjectList=selectedObjectList)
-        elif event.action.tag == 'checker':
+        elif tag == 'checker':
             checked = event.action.checked
             selectedObjectList = event.action.value.selectedObjectList.__dict__
             if checked:

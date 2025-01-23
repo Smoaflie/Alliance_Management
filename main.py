@@ -1,12 +1,10 @@
 import logging
 import os
 
-from app import app
-from app.extensions import init_redis, init_celery
-from app.blueprints import register_blueprints
-
+from app import app, init_app
+from scripts.utils import get_project_root
 # 获取项目的根目录
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = get_project_root()
 
 # 创建日志文件夹
 logs_dir = os.path.join(project_root, '.logs')
@@ -25,8 +23,8 @@ logging.basicConfig(
     ]
 )
 
+
+
 if __name__ == "__main__":
-    init_redis(app)
-    init_celery(app)
-    register_blueprints(app)
+    init_app(app)
     app.run(debug=True)

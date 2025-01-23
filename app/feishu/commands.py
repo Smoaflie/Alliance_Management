@@ -5,8 +5,9 @@ import copy
 import time
 from datetime import datetime
 
-from app import database
-from app.extensions import celery_task
+from app.ext.celery import celery
+from app.decorators import celery_task
+from app.feishu.config import database
 from app.feishu.config import (
     ITEM_SHEET_TOKEN,
     SHEET_ID_ITEM,
@@ -584,4 +585,3 @@ def _command_get_help(reply_map, message, sender_id, object, params):
         f"{'save':<{margin}} \t(仅管理员)同步物资情况到指定的电子表格\n"
         f"{'load':<{margin}} \t(仅管理员)同步电子表格中物资情况到数据库\n"
     )
-    

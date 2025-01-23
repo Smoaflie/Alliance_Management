@@ -1,9 +1,8 @@
-venv/
+.venv/
 *.cnf
 *.pyc
 __pycache__
 datasheet/
 request.json
 setting.json
-.env
-.logs/app.log
+.logs/
