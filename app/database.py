@@ -2,10 +2,11 @@ import hashlib
 import logging
 import time
 
-from scripts.api import mysql_connector
+from scripts.api.mysql_connector import MySql
 
-class ApiManagement(object):
-    """物资数据库操作的接口类"""
+logger = logging.getLogger(__name__)
+
+class Database(MySql) :
     # 物资状态对应表,物资状态在数据库中是用int存储的
     useable_map = {
         1: '可用',
@@ -15,12 +16,18 @@ class ApiManagement(object):
         4: '申请中',
         5: '未知'
     }
-    
-    def __init__(self, info : dict):
-        """通过info数据初始化sql连接池"""
-        self.sql = mysql_connector.MySql(info)
 
-    
+    def __init__(self, config : dict):
+        """通过info数据初始化sql连接池"""
+        host = config.get('host')
+        port = config.get('port')
+        user = config.get('user')
+        password = config.get('password')
+        super().__init__(host, port, user, password)
+        self.db = config.get('db')
+
+        self.init_database()
+
     def get_categories(self) -> dict:
         """
         获取仓库内所有物品种类
@@ -31,7 +38,7 @@ class ApiManagement(object):
              b'name':('裁判系统','电机') 类型名, 
              b'total':(10,19) 该类型下物资总数}
         """
-        info = self.sql.getall('item_category')
+        info = super().getall('item_category')
         r = {'id': [], 'name': [], 'total': []}
         for it in info:
             r['id'].append(it[0])
@@ -60,11 +67,11 @@ class ApiManagement(object):
             ValueError: 缺少必要参数或无法根据条件找到类型时raise
         """
         if category_id:
-            info = self.sql.fetchall('item_category', 'father', category_id)
+            info = super().fetchall('item_category', 'father', category_id)
             if not info:
                 raise ValueError(f"{__name__}.get_category无法通过category_id:{category_id}找到目标类型")
         elif category_name:
-            info = self.sql.fetchall('item_category', 'name', category_name)
+            info = super().fetchall('item_category', 'name', category_name)
             if not info:
                 raise ValueError(f"{__name__}.get_category无法通过category_name:{category_name}找到目标类型")
         else:
@@ -107,20 +114,20 @@ class ApiManagement(object):
             ValueError: 缺少必要参数或无法根据条件找到物品信息时raise
         """
         if category_id:
-            info = self.sql.fetchall('item_list', 'father', int(category_id))
+            info = super().fetchall('item_list', 'father', int(category_id))
             if not info:
                 raise ValueError(f"无法找到目标物品 category_id:{category_id}")
         elif category_name:
             category_id = self.get_category(category_name=category_name).get['id'][0]
-            info = self.sql.fetchall('item_list', 'father', int(category_id))
+            info = super().fetchall('item_list', 'father', int(category_id))
             if not info:
                 raise ValueError(f"无法找到目标物品 category_name:{category_name}")
         elif name:
-            info = self.sql.fetchall_like('item_list', 'name', name)
+            info = super().fetchall_like('item_list', 'name', name)
             if not info:
                 raise ValueError(f"无法找到目标物品 name:{name}")
         elif name_id:
-            info = self.sql.fetchall('item_list', 'id', name_id)
+            info = super().fetchall('item_list', 'id', name_id)
             if not info:
                 raise ValueError(f"无法找到目标物品 name_id:{name_id}")
         else:
@@ -197,10 +204,10 @@ class ApiManagement(object):
             }
         """
         info = []
-        groups = self.sql.getall('item_category')
+        groups = super().getall('item_category')
         for group in groups:
             name = group[1]
-            d = self.sql.fetchall('item_info', 'father', name[0])
+            d = super().fetchall('item_info', 'father', name[0])
             for it in d:
                 if it not in info:
                     info.append(it)
@@ -226,9 +233,9 @@ class ApiManagement(object):
         raise:
             ValueError: 无法找到对应oid的物品时抛出
         """
-        info = self.sql.fetchone('item_info', 'id', oid)
+        info = super().fetchone('item_info', 'id', oid)
         if info:
-            father = self.sql.fetchone('item_list', 'id', info[1])
+            father = super().fetchone('item_list', 'id', info[1])
             return self._return_itemTable_by_info(info, father[2])
         else:
             raise ValueError(f"无法找到目标物品 oid:{str(oid)}") if info else None
@@ -264,18 +271,18 @@ class ApiManagement(object):
         """
         if name or name_id:
             if name:
-                father = self.sql.fetchone('item_list', 'name', name)
+                father = super().fetchone('item_list', 'name', name)
                 if not father:
                     raise ValueError(f"无法找到目标物品 name:{name}")
             if name_id:
-                father = self.sql.fetchone('item_list', 'id', name_id)
+                father = super().fetchone('item_list', 'id', name_id)
                 if not father:
                     raise ValueError(f"无法找到目标物品 name_id:{name_id}")
                 
             name_id = father[0]
             name = father[2]
 
-            info = self.sql.fetchall('item_info', 'father', name_id)
+            info = super().fetchall('item_info', 'father', name_id)
             return self._return_itemTable_by_info(info, name=name)  if info else None
 
         elif user_id or user_name:
@@ -283,7 +290,7 @@ class ApiManagement(object):
                 user_name = self.get_member(user_id)['name']
             if not user_id:
                 raise ValueError(f"无法找到目标用户 user_id:{user_id}")
-            member_items = self.sql.fetchall('item_info','wis',user_name)
+            member_items = super().fetchall('item_info','wis',user_name)
             if not member_items:
                 raise ValueError(f"无法找到名下物品 user_name:{user_name}")
             name_id_map = {}
@@ -316,12 +323,12 @@ class ApiManagement(object):
                 'user_id':user_id,
                 'name': user_name
             }
-            self.sql.insert('members', ins)
+            super().insert('members', ins)
     def add_member_batch(self, user_list: list):
         """批量添加用户"""
         for user in user_list:
-            if not self.sql.fetchone('members', 'user_id', user['user_id']):
-                self.sql.insert('members', user)
+            if not super().fetchone('members', 'user_id', user['user_id']):
+                super().insert('members', user)
 
     def get_member(self, user_id: str) -> dict[str, list]:
         """"
@@ -337,7 +344,7 @@ class ApiManagement(object):
         raise:
             ValueError: 无法找到目标用户时抛出
         """
-        member = self.sql.fetchone('members', 'user_id', user_id)
+        member = super().fetchone('members', 'user_id', user_id)
         if member:
             return {
                 'user_id': member[0],
@@ -358,7 +365,7 @@ class ApiManagement(object):
                 'root':    是否有管理员权限(int 0:无 1:有)
             }
         """
-        members = self.sql.fetchall('members', 'root', 1)
+        members = super().fetchall('members', 'root', 1)
         result = []
         if members:
             for member in members:
@@ -371,11 +378,11 @@ class ApiManagement(object):
         
     def set_member_root(self, user_id: str):
         """设置某个用户为管理员"""
-        self.sql.update('members', ('user_id',user_id), {'root':1})
+        super().update('members', ('user_id',user_id), {'root':1})
 
     def set_member_unroot(self, user_id: str):
         """取消某个用户的管理员权限"""
-        self.sql.update('members', ('user_id',user_id), {'root':0})
+        super().update('members', ('user_id',user_id), {'root':0})
 
     def add_item(
         self, 
@@ -423,9 +430,9 @@ class ApiManagement(object):
         # 查找父记录
         #TODO:无法添加同名物品到不同分类            
         if name_id:
-            father_recoder = self.sql.fetchone('item_list', 'id', name_id)
+            father_recoder = super().fetchone('item_list', 'id', name_id)
         elif name:
-            father_recoder = self.sql.fetchone('item_list', 'name', name)
+            father_recoder = super().fetchone('item_list', 'name', name)
         else:
             raise ValueError("缺少必要的参数")
         
@@ -437,7 +444,7 @@ class ApiManagement(object):
         else:
             name_id = father_recoder[0]
 
-        self_recoder = self.sql.fetchall('item_info', 'father', name_id)
+        self_recoder = super().fetchall('item_info', 'father', name_id)
         insert_data = {
             'id':0,
             'father':name_id
@@ -447,16 +454,16 @@ class ApiManagement(object):
             for i in range(int(num) if num else 1):
                 # 设置Id，进行添加
                 insert_data['id'] = name_id*1000 + i + new_id
-                self.sql.insert('item_info', insert_data)
+                super().insert('item_info', insert_data)
             if num_broken:
                 for i in range(num_broken):
-                    self.sql.update('item_info', ('id',i+new_id), {'useable':3})
+                    super().update('item_info', ('id',i+new_id), {'useable':3})
         elif oid and wis and do:
             insert_data['id'] = name_id*1000 + int(oid)%1000
             insert_data['useable'] = next((key for key, value in self.useable_map.items() if value == useable), 5)
             insert_data['wis'] = wis
             insert_data['do'] = do
-            self.sql.insert('item_info', insert_data)
+            super().insert('item_info', insert_data)
 
     def add_items_until_limit(
         self, 
@@ -474,9 +481,9 @@ class ApiManagement(object):
             ValueError: 传入参数不足以新建物品时抛出
         """
         if name_id:
-            father_recoder = self.sql.fetchone('item_list', 'id', name_id)
+            father_recoder = super().fetchone('item_list', 'id', name_id)
         elif name:
-            father_recoder = self.sql.fetchone('item_list', 'name', name)
+            father_recoder = super().fetchone('item_list', 'name', name)
         else:
             raise ValueError("缺少必要的参数")
         if father_recoder:
@@ -509,9 +516,9 @@ class ApiManagement(object):
 
         # 查找父记录
         if category_id:
-            father_recoder = self.sql.fetchone('item_category', 'id', category_id)
+            father_recoder = super().fetchone('item_category', 'id', category_id)
         elif category_name:
-            father_recoder = self.sql.fetchone('item_category', 'name', category_name)
+            father_recoder = super().fetchone('item_category', 'name', category_name)
         else:
             raise ValueError("缺少必要的参数")
         
@@ -525,15 +532,15 @@ class ApiManagement(object):
             category_id = father_recoder[0]
 
         # 查找是否已存在
-        self_recoder = self.sql.fetchone('item_list', 'name', name)
+        self_recoder = super().fetchone('item_list', 'name', name)
         if self_recoder:
             logging.info("%s.add_list 尝试创建列表,但当前列表 %s 已存在" % (
                             __name__, name))
             return
         # 设置Id，进行添加
-        self_recoder = self.sql.fetchall('item_list', 'father', category_id)
+        self_recoder = super().fetchall('item_list', 'father', category_id)
         new_id = (1000*category_id) + (int(self_recoder[-1][0])%1000 + 1 if self_recoder else 1)
-        self.sql.insert('item_list', {
+        super().insert('item_list', {
             'id':new_id,
             'father':category_id,
             'name':name
@@ -558,14 +565,14 @@ class ApiManagement(object):
             category_name = params.get('category_name')
 
         # 查找是否已存在
-        self_recoder = self.sql.fetchone('item_category', 'name', category_name)
+        self_recoder = super().fetchone('item_category', 'name', category_name)
         if self_recoder:
             print(f"当前类 {category_name} 已存在")
             return
         # 设置Id，进行添加
-        self_recoder = self.sql.getall('item_category')
+        self_recoder = super().getall('item_category')
         new_id = (int(self_recoder[-1][0]) + 1 if self_recoder else 1)
-        self.sql.insert('item_category', {
+        super().insert('item_category', {
             'id':new_id,
             'name':category_name
         })
@@ -586,7 +593,7 @@ class ApiManagement(object):
         if params:
             id = params.get('id')
 
-        self.sql.delete('item_info','id',id)
+        super().delete('item_info','id',id)
 
     def del_list(
         self,
@@ -614,9 +621,9 @@ class ApiManagement(object):
         if not (name or id):
             raise ValueError("缺少必要的参数")
         if name:
-            self.sql.delete('item_list','name',name)
+            super().delete('item_list','name',name)
         elif id:
-            self.sql.delete('item_list','id',id)
+            super().delete('item_list','id',id)
 
     def del_category(
         self,
@@ -644,15 +651,15 @@ class ApiManagement(object):
         if not (name or id):
             raise ValueError("缺少必要的参数")
         if name:
-            self.sql.delete('item_category','name',name)
+            super().delete('item_category','name',name)
         elif id:
-            self.sql.delete('item_category','id',id)
+            super().delete('item_category','id',id)
 
     def del_all(self):
         """清除所有物品对象、信息、类型"""
-        self.sql.delete('item_info')
-        self.sql.delete('item_list')
-        self.sql.delete('item_category')
+        super().delete('item_info')
+        super().delete('item_list')
+        super().delete('item_category')
 
     def apply_item(
         self, 
@@ -696,7 +703,7 @@ class ApiManagement(object):
             wis:    修改后的物品位置
             do:     备注
         """
-        self.sql.insert('logs', {'time':int(time.time()*1000),
+        super().insert('logs', {'time':int(time.time()*1000),
                                  'userId':operater_user_id,
                                  'operation':operation,
                                  'object':oid,
@@ -704,7 +711,7 @@ class ApiManagement(object):
         update_date = {}
         update_date['useable'] = useable
         update_date['wis'] = wis
-        self.sql.update('item_info', ('id',oid), update_date)
+        super().update('item_info', ('id',oid), update_date)
 
     def return_item(
         self, 
@@ -754,10 +761,10 @@ class ApiManagement(object):
             create_time: 消息卡片创建时间
         """
         if message_id and create_time:
-            self.sql.update('members',('user_id',user_id),{   
+            super().update('members',('user_id',user_id),{   
                 'card_message_id':message_id,'card_message_create_time':create_time})
         else:
-            self.sql.update('members',('user_id',user_id),{   
+            super().update('members',('user_id',user_id),{   
                 'card_message_id':None,'card_message_create_time':None})
         
     def is_alive_card(self, user_id: str) -> str | None:
@@ -768,48 +775,194 @@ class ApiManagement(object):
             如可用,返回消息卡片id
             不可用,返回None
         """
-        result = self.sql.fetchone('members','user_id',user_id)
+        result = super().fetchone('members','user_id',user_id)
         return result[3] if (result and result[3] not in ('null',None) and
             time.time()-int(result[4])/1000<1036800) else None
     
     def is_user_root(self, user_id: str) -> bool:
         """判断用户是不是管理员"""
-        result = self.sql.fetchone('members','user_id',user_id)
+        result = super().fetchone('members','user_id',user_id)
         return result[2]==1
     
     def get_database_md5(self) -> str:
         """获取数据库的md5值"""
-        table_list = self.sql.gettable()
+        table_list = super().gettable()
         table_checksum_list = []
         md5_hash = hashlib.md5()
         for table in table_list:
-            table_checksum_list.append(str(self.sql.getchecksum(table[0])[0][1]))
+            table_checksum_list.append(str(super().getchecksum(table[0])[0][1]))
         combined_string = ''.join(table_checksum_list)
         md5_hash.update(combined_string.encode('utf-8'))
         return  md5_hash.hexdigest()
 
     def fetch_contact_md5(self) -> str | None:
         """获取数据库中存储的通讯录md5值"""
-        result = self.sql.fetchone('logs', 'do', 'used to detect changes in the contact.')
+        result = super().fetchone('logs', 'do', 'used to detect changes in the contact.')
         return result[1] if result else None
     
     def update_contact_md5(self,contact_md5: str):
         """设置数据库中存储的通讯录md5值"""
         if not self.fetch_contact_md5():
-            self.sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG',
+            super().insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG',
                                      'do':'used to detect changes in the contact.'})
-        self.sql.update('logs',('do','used to detect changes in the contact.'),{'time':contact_md5})
+        super().update('logs',('do','used to detect changes in the contact.'),{'time':contact_md5})
 
     def fetch_itemSheet_md5(self) -> str:
         """获取数据库中存储的电子表格md5值"""
-        result = self.sql.fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
+        result = super().fetchone('logs', 'do', 'used to detect changes in the spreadsheet.')
         return result[1] if result else None
     
     def update_itemSheet_md5(self,itemSheet_md5):
         """设置数据库中存储的电子表格md5值"""
         if not self.fetch_itemSheet_md5():
-            self.sql.insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG',
+            super().insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG',
                                      'do':'used to detect changes in the spreadsheet.'})
-        self.sql.update('logs',('do','used to detect changes in the spreadsheet.'),{'time':itemSheet_md5})
+        super().update('logs',('do','used to detect changes in the spreadsheet.'),{'time':itemSheet_md5})
     
+
+    def init_database(self):
+        """初始化数据库"""
+        if not super().is_database_exists(self.db):
+            super().create_database(self.db)
+        super().set_default_db(self.db)
+        """初始化表"""
+        self.init_tables()
+        """初始化触发器"""
+        self.init_trigger()
     
+    def init_tables(self):
+        tables = {
+            # logs 用于存储日志，这个表比较混乱 
+                # `id` 日志ID  
+                # `time` 提交时间  
+                # `userId` 操作人id  
+                # `operation` 操作内容 
+                # `object` 操作对象  
+                # `do` 备注  
+            'logs': '''CREATE TABLE `logs` (
+            `id` int(255) AUTO_INCREMENT PRIMARY KEY,
+            `time` text NOT NULL,
+            `userId` text NOT NULL,
+            `operation` text NOT NULL,
+            `object` int(255) DEFAULT NULL,
+            `do` text
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
+            # item_category 用于存储物资分类
+                # `id` 分类ID  
+                # `name` 分类名称
+                # `total` 分类下物资数
+            'item_category': '''CREATE TABLE `item_category` (
+            `id` int(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY, 
+            `name` text NOT NULL,
+            `total` int(11) NOT NULL DEFAULT 0
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
+            #  item_list 存储物资列表
+                # `id` 6位对象ID，前3位为对应分类ID
+                # `father` 对应分类ID(3位)
+                # `name` 物资名称
+                # `total`  物资总数
+                # `free`    空闲物资数
+            'item_list': '''CREATE TABLE `item_list` (
+            `id` int(10) UNSIGNED NOT NULL PRIMARY KEY,
+            `father` int(255) UNSIGNED NOT NULL,
+            `name` text NOT NULL,
+            `total` int(6) NOT NULL DEFAULT 0,
+            `free` int(6) NOT NULL DEFAULT 0,
+            `broken` int(6) NOT NULL DEFAULT 0
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
+            #  存储物资详细信息  
+                # `id` 11位对象ID，前6位为对应物品ID
+                # `father` 对应物品ID  
+                # `useable` 是否可用    1可用，0已借出，2维修中，3报废，4申请中
+                # `wis` 当前位置  
+                # `do` 备注
+                # `purpose` 用途
+            'item_info': '''CREATE TABLE `item_info` (
+            `id` int(10) UNSIGNED NOT NULL PRIMARY KEY,
+            `father` int(255) UNSIGNED NOT NULL,
+            `useable` int(2) NOT NULL DEFAULT 1,
+            `wis` text,
+            `do` text,
+            `purpose` text,
+            FOREIGN KEY (father) REFERENCES item_list(id)
+            ON UPDATE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
+            #  存储成员信息  
+                # `id` 索引
+                # `user_id` 飞书user_id  
+                # `name` 实名
+                # `root` 管理 1是0否   
+                # `card_message_id` 用户会话中消息卡片的message_id
+                # `card_message_create_time` 用户会话中消息卡片的创建时间
+            'members': '''CREATE TABLE `members` (
+            `user_id` text NOT NULL,
+            `name` text NOT NULL,
+            `root` int(1) NOT NULL DEFAULT 0,
+            `card_message_id` text,
+            `card_message_create_time` text
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'''
+        }
+        for key, value in tables.items():
+            if not super().is_table_exists(key):
+                with super().get_connection(self.db).cursor() as cursor:
+                    cursor.execute(value)
+                    logger.info(f"Table {key} created.")
+
+    def init_trigger(self):
+        triggers = {
+            # 当表item_info增删改后触发，更新item_list和item_category的数量值
+            'update_item_total_free': '''
+                CREATE TRIGGER update_item_total_free
+                AFTER INSERT ON item_info
+                FOR EACH ROW
+                BEGIN
+                    UPDATE item_list
+                    SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
+                        free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1),
+                        broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
+                    WHERE id = NEW.father;
+
+                    UPDATE item_category
+                    SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = NEW.father))
+                    WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
+                END;
+            ''',
+            'update_item_total_free_on_delete': '''
+                CREATE TRIGGER update_item_total_free_on_delete
+                AFTER DELETE ON item_info
+                FOR EACH ROW
+                BEGIN
+                    UPDATE item_list
+                    SET total = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father),
+                        free = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 1),
+                        broken = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 3)
+                    WHERE id = OLD.father;
+
+                    UPDATE item_category
+                    SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = OLD.father))
+                    WHERE id = (SELECT father FROM item_list WHERE id = OLD.father);
+                END;
+            ''',
+            'update_item_total_free_after_update': '''
+                CREATE TRIGGER update_item_total_free_after_update
+                AFTER UPDATE ON item_info
+                FOR EACH ROW
+                BEGIN
+                    UPDATE item_list
+                    SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
+                        free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1),
+                        broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
+                    WHERE id = NEW.father;
+
+                    UPDATE item_category
+                    SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = NEW.father))
+                    WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
+                END;
+            '''
+        }
+        for trigger_name, create_sql in triggers.items():
+            if not super().is_trigger_exists(trigger_name):
+                with super().get_connection(self.db).cursor() as cursor:
+                    cursor.execute(create_sql)
+                    logger.info(f"Trigger {trigger_name} created.")
+        

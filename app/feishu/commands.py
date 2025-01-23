@@ -1,365 +1,33 @@
-#!/usr/bin/env python3.12.3
-import copy
-import logging
-import os
 import re
-import redis
-import time
 import ujson
-
+import logging
+import copy
+import time
 from datetime import datetime
-from dotenv import load_dotenv, find_dotenv
-from celery import Celery
-from flask import Flask
-from flask import Blueprint
-from flask import jsonify
-from flask import request
-from functools import wraps
-from requests import HTTPError
 
-from scripts.utils import obj_2_dict
-from scripts.utils import DEBUG_OUT
-from scripts.utils import format_with_margin
-from scripts.utils import can_convert_to_int
-from scripts.utils import replace_placeholders
-from webhooks import webhook_bp  # 导入您的蓝图
-from scripts.api.api_management import ApiManagement
-from scripts.api.api_feishu_clients import MessageApiClient
-from scripts.api.api_feishu_clients import SpreadsheetApiClient
-from scripts.api.api_feishu_clients import ContactApiClient
-from scripts.api.api_feishu_clients import CloudApiClient
-from scripts.api.api_feishu_clients import ApprovalApiClient
-from scripts.api.api_feishu_events import MessageReceiveEvent
-from scripts.api.api_feishu_events import UrlVerificationEvent
-from scripts.api.api_feishu_events import EventManager
-from scripts.api.api_feishu_events import BotMenuClickEvent
-from scripts.api.api_feishu_events import CardActionEvent
-from scripts.api.api_feishu_events import ApprovalInstanceEvent
+from app import database
+from app.extensions import celery_task
+from app.feishu.config import (
+    ITEM_SHEET_TOKEN,
+    SHEET_ID_ITEM,
+    APPROVAL_CODE,
+    CARD_DISPLAY_JSON,
+    CARD_DISPLAY_REPEAT_ELEMENTS_JSON,
+    BUTTON_CONFIRM_JSON,
+    FORM_JSON,
+    message_api_client,
+    spreadsheet_api_client,
+    approval_api_event,
+    LarkException
+)
+from scripts.utils import (
+    can_convert_to_int,
+    format_with_margin,
+    load_file,
+    replace_placeholders
+)
 
-'''
-init
-'''
-# 定义Flask实例
-app = Flask(__name__)
-# 注册蓝图
-"""
-在 Flask 中，蓝图（Blueprint） 是一种组织应用路由和处理逻辑的机制。
-它允许您将应用的不同部分拆分成多个独立的组件，并在应用中按需注册这些组件。
-这样做可以提高代码的可维护性、可复用性，并使得复杂的应用结构更加清晰。
-"""
-app.register_blueprint(webhook_bp)
-# 设置日志等级
-logging.basicConfig(level=logging.INFO)
-# 配置全局变量
-with open('settings.json', 'r') as f:
-    settings = ujson.loads(f.read())
-    management = ApiManagement(settings['mysql'])
-    ITEM_SHEET_TOKEN = settings.get('sheet').get('token')
-    SHEET_ID_TOTAL = settings.get('sheet').get('sheet_id_TOTAL')
-    SHEET_ID_ITEM = settings.get('sheet').get('sheet_id_ITEM')
-    APPROVAL_CODE = settings.get('approval').get('approval_code')
-    REDIS_HOST = settings.get('redis').get('host')
-    REDIS_PORT = settings.get('redis').get('port')
-    REDIS_DB = settings.get('redis').get('db')
-    ADMIN_USER_ID = settings.get('management').get('admin_user_id')
-with open('message_card.json', 'r') as f:
-    card_json = ujson.loads(f.read())
-    CARD_DISPLAY_JSON = card_json.get('display')
-    CARD_DISPLAY_REPEAT_ELEMENTS_JSON = card_json.get('display_repeat_elements')
-    BUTTON_CONFIRM_JSON = card_json.get('button_confirm')
-    FORM_JSON = card_json.get('form')
-# 配置 Redis
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
-# 限制请求频率
-REQUEST_LIMIT = 1  # 限制的请求次数
-TIME_WINDOW = 3  # 时间窗口，单位为秒
-# 配置 Celery
-app.config['CELERY_BROKER_URL'] = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}'
-app.config['CELERY_RESULT_BACKEND'] = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}'
-celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
-celery.conf.update(app.config)
-
-# load env parameters form file named .env
-load_dotenv(find_dotenv())
-# load from env
-APP_ID = os.getenv("APP_ID")
-APP_SECRET = os.getenv("APP_SECRET")
-VERIFICATION_TOKEN = os.getenv("VERIFICATION_TOKEN")
-ENCRYPT_KEY = os.getenv("ENCRYPT_KEY")
-LARK_HOST = os.getenv("LARK_HOST")
-
-# init service
-spreadsheet_api_client = SpreadsheetApiClient(APP_ID, APP_SECRET, LARK_HOST)
-message_api_client = MessageApiClient(APP_ID, APP_SECRET, LARK_HOST)
-contact_api_client = ContactApiClient(APP_ID, APP_SECRET, LARK_HOST)
-cloud_api_client = CloudApiClient(APP_ID, APP_SECRET, LARK_HOST)
-approval_api_event = ApprovalApiClient(APP_ID, APP_SECRET, LARK_HOST)
-event_manager = EventManager()
-
-'''
-wraps
-'''
-def celery_task(func):
-    """与celery.task装饰器配合,使函数被调用时始终作为后台任务."""
-    # 使用 Celery 的 task 装饰器来装饰函数
-    task = celery.task(func)
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        return task.apply_async(args=args, kwargs=kwargs)
-    return wrapper
-
-def rate_limit(event_type):
-    """用于限制请求频率的装饰器."""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            user_id = request.json.get('event').get('operator').get('user_id')
-            current_time = time.time()
-
-            # 生成唯一键
-            key = f"{user_id}:{event_type}"
-
-            # 获取当前请求次数
-            request_count = redis_client.zcard(key)
-
-            # 检查是否超过限制
-            if request_count >= REQUEST_LIMIT:
-                return jsonify({"error": "请求频率过高"}), 403
-
-            # 添加当前请求时间
-            redis_client.zadd(key, {current_time: current_time})
-
-            # 设置过期时间，确保在时间窗口结束后自动删除键
-            redis_client.expire(key, TIME_WINDOW)
-
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-'''
-event handler function
-'''
-@event_manager.register("url_verification")
-def request_url_verify_handler(req_data: UrlVerificationEvent):
-    # url verification, just need return challenge
-    if req_data.event.token != VERIFICATION_TOKEN:
-        raise Exception("VERIFICATION_TOKEN is invalid")
-    return jsonify({"challenge": req_data.event.challenge})
-
-@event_manager.register("im.message.receive_v1")
-def message_receive_event_handler(req_data: MessageReceiveEvent):
-    """事件 接收消息-`im.message.receive_v1`的具体处理"""
-    user_id = req_data.event.sender.sender_id.user_id
-    message = obj_2_dict(req_data.event.message)
-    sender_id = obj_2_dict(req_data.event.sender.sender_id)
-
-    _create_command_message_response(user_id=user_id,message=message,sender_id=sender_id)
-
-    return jsonify()
-
-@event_manager.register("application.bot.menu_v6")
-@rate_limit("application.bot.menu_v6")    
-def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
-    """
-    事件 机器人菜单-`application.bot.menu_v6`的具体处理
-    """
-    user_id = req_data.event.operator.operator_id.user_id
-    event_key = req_data.event.event_key
-
-    if event_key == 'custom_menu.inspect.items':
-    #获取全部物品类型，配置映射
-        content = _create_message_card_date(object_id=0)
-        _send_a_new_message_card(user_id, content)
-    elif event_key == 'custom_menu.test':
-        # 测试用
-        # DocMetadata = cloud_api_client.query_docs_metadata([ITEM_SHEET_TOKEN], ['sheet']).get('data').get('metas')        
-        # DEBUG_OUT(DocMetadata)
-        # content = _create_message_card_date(object_id=0)
-        # _send_a_new_message_card(user_id, content)
-        pass
-    
-    return jsonify()
-
-@event_manager.register("card.action.trigger")
-def card_action_event_handler(req_data: CardActionEvent):
-    """
-    事件 卡片交互-`card.action.trigger`的具体处理.
-    """
-    event = req_data.event
-    token = event.token
-    user_id = event.operator.user_id
-    alife_card_id = management.is_alive_card(user_id)
-    current_card_id = event.context.open_message_id
-    toast = None
-    
-    if alife_card_id and alife_card_id!=current_card_id:
-        message_api_client.recall(current_card_id)
-        toast = {
-                'type':'error',
-                'content':'Error: 该消息卡片已过期，请使用新卡片'
-            }
-    else:
-        if event.action.tag == 'button':
-            value = event.action.value
-            selectedObjectList=value.selectedObjectList.__dict__
-            #将表单按钮与其余按钮进行区分
-            if hasattr(event.action,"name") and event.action.name == "form_button":
-                #判断是否选中物品
-                if not selectedObjectList['oid']:
-                    toast = {
-                            'type':'error',
-                            'content':f'Error: 未选中物品'
-                        }
-                else:
-                    #判断物品是否可用
-                    unuseableObjectOid = []
-                    for oid in selectedObjectList['oid']:
-                            item_info = management.get_item(oid)
-                            if item_info['useable'][0] != '可用':
-                                unuseableObjectOid.append(oid)
-                                #删除该物品
-                                index = selectedObjectList['oid'].index(oid)
-                                del selectedObjectList['name'][index]
-                                del selectedObjectList['oid'][index]
-                    
-                    if unuseableObjectOid:#存在不可用的物品，告诉用户
-                            toast = {
-                                'type':'error',
-                                'content':f'Error: 物品不可用,oid{unuseableObjectOid}'
-                            }
-
-                    else: #发送审批申请
-                        create_approval_about_apply_items(user_id, selectedObjectList, event.action.form_value.Input_value)
-                        #清空选中物品列表
-                        selectedObjectList = None
-                        toast = {
-                                'type':'success',
-                                'content':'success: 已发送申请'
-                            }                    
-                    _update_message_card(token, object_id=0, selectedObjectList=selectedObjectList)
-            else:
-                if value.name == 'home':
-                    _update_message_card(token, object_id=0, selectedObjectList=selectedObjectList)
-                elif value.name == 'self':
-                    _update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
-                elif value.name == 'object.inspect':
-                    _update_message_card(token, object_id=int(value.id), selectedObjectList=selectedObjectList)
-                elif value.name == 'back':
-                    if int(value.id) != 0: #主页时的返回按钮不可用
-                        _update_message_card(token, object_id=int(value.id)//1000, selectedObjectList=selectedObjectList)                        
-                elif value.name == 'object.return':
-                    toast = {
-                        'type':'success',
-                        'content':'success: 已归还'
-                    }
-                    management.return_item(user_id,value.object_param_1)
-                    _update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
-        elif event.action.tag == 'input':
-            input_value = event.action.input_value
-            selectedObjectList = event.action.value.selectedObjectList.__dict__
-            
-            if event.action.name == "input.search":
-                _update_message_card(token, object_id=-2, target=input_value, selectedObjectList=selectedObjectList)
-        elif event.action.tag == 'checker':
-            checked = event.action.checked
-            selectedObjectList = event.action.value.selectedObjectList.__dict__
-            if checked:
-                selectedObjectList['name'].append(event.action.value.name)
-                selectedObjectList['oid'].append(event.action.value.oid)
-            else:
-                try:
-                    index = selectedObjectList['oid'].index(event.action.value.oid)
-                    del selectedObjectList['name'][index]
-                    del selectedObjectList['oid'][index]
-                except ValueError:
-                    pass
-            _update_message_card(token, object_id=int(event.action.value.oid)//1000, selectedObjectList=selectedObjectList)
-
-
-    request_data = {
-        'toast':toast if toast else {}
-    }
-    return jsonify(request_data)
-
-@event_manager.register("approval_instance")
-def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
-    """回调 审批实例状态变化-`approval_instance`的具体处理"""
-    event = req_data.event
-    
-    if event.approval_code == APPROVAL_CODE:
-        instance = approval_api_event.fetch_instance(event.instance_code)
-        status = event.status
-        applicant_user_id = instance.get('data').get('timeline')[0].get('user_id')
-        #TODO:同意和拒绝的结构不一样，现在写的是不好的解决办法
-        operator_user_id = (instance.get('data').get('timeline')[-1].get('user_id')
-                            if instance.get('data').get('timeline')[-1].get('user_id') 
-                            else instance.get('data').get('timeline')[-2].get('user_id'))
-        if status in ('APPROVED', 'REJECTED','CANCELED','DELETED'): 
-            form = ujson.loads(instance.get('data').get('form'))
-            params = {}
-            params['do'] = form[0].get('value')
-            params['time'] = form[1].get('value')
-            params['objectList'] = ujson.loads(form[2].get('value'))
-            applicant_name = management.get_member(applicant_user_id).get('name')
-            if status in ('REJECTED','CANCELED','DELETED'): 
-                for oid in params['objectList']['oid']:
-                    management.set_item_state(oid=oid,operater_user_id=operator_user_id,
-                                                operation=status,useable=1,wis="仓库",do=params['do'])
-                logging.info("审批：%s拒绝对 %s 的申请" % (
-                                operator_user_id, params['objectList']['oid']))
-            elif status == 'APPROVED':
-                for oid in params['objectList']['oid']:
-                    management.set_item_state(oid=oid,operater_user_id=operator_user_id,
-                                                operation=status,useable=0,wis=applicant_name,do=params['do'])
-                logging.info("审批：%s同意对 %s 的申请" % (
-                                operator_user_id, params['objectList']['oid']))
-
-
-    return jsonify()
-
-'''
-Flask app function
-'''
-@app.route("/", methods=["POST"])
-def callback_event_handler():    
-    """
-    处理飞书的事件/回调
-    
-    在开发者后台配置请求地址后(可按需调整route地址)，飞书会将请求发来，由该函数处理。
-
-    该函数会提取事件/回调的唯一标识id:
-        假如redis内有重复id的事件/回调,认为该请求已处理,返回200空响应
-        假如redis中没相应数据,存储,并跳转到event_manager获取到事件/回调对应的处理函数
-    """
-    requests = request.json
-    DEBUG_OUT(data=requests)
-    if requests.get('uuid'):  #回调
-        logging.info("fetch request,uuid:%s" % requests['uuid'])
-    elif requests.get("event"): #事件
-        event_id = requests.get('header').get('event_id')
-        create_time = requests.get('header').get('create_time')
-        #使用redis监测重复请求
-        if redis_client.exists(event_id): #请求已处理，跳过
-            logging.error("This request has been handled. event_id:%s" % event_id)
-            return jsonify()
-        else:
-            redis_client.set(event_id, create_time, ex=3600)
-            logging.info("fetch request,event_id:%s" % event_id)
-    else:
-        logging.info("request=%s" % requests)
-
-    event_handler, event = event_manager.get_handler_with_event(VERIFICATION_TOKEN, ENCRYPT_KEY)
-    # 运行协程并返回响应
-    return event_handler(event)
-
-@app.errorhandler
-def msg_error_handler(ex):
-    """错误讯息处理"""
-    logging.error(ex)
-    response = jsonify(message=str(ex))
-    response.status_code = (
-        ex.response.status_code if isinstance(ex, HTTPError) else 500
-    )
-    return response
+logger = logging.getLogger(__name__)
 
 '''
 private function
@@ -378,30 +46,31 @@ def _update_message_card(
     data = _create_message_card_date(object_id, user_id, 
                                       target, selectedObjectList)
     if data:
-        logging.info("更新卡片token: %s" % token)
+        logger.info("更新卡片token: %s" % token)
         message_api_client.delay_update_message_card(token, data)
 
 @celery_task
-def _send_a_new_message_card(user_id: str, content: dict):
+def send_a_new_message_card(user_id: str, content: dict):
     """
     发送新消息卡片
 
     如果之前该用户已有消息卡片，先撤回再发送新卡片
     """
     try:
-        alive_card_id = management.is_alive_card(user_id)
+        alive_card_id = database.is_alive_card(user_id)
         if alive_card_id:
-            logging.info("撤回与 %s 的消息卡片 %s" % (user_id,alive_card_id))
-            management.update_card(user_id)
+            logger.info("撤回与 %s 的消息卡片 %s" % (user_id,alive_card_id))
+            database.update_card(user_id)
             message_api_client.recall(alive_card_id)
 
-        result = message_api_client.send_interactive_with_user_id(user_id, content)
+        resp = message_api_client.send_interactive_with_user_id(user_id, content)
+        result = resp.json()
         message_id = result.get('data').get('message_id')
         create_time = result.get('data').get('create_time')
-        logging.info("向 %s 发送新消息卡片 %s" % (user_id,message_id))
-        management.update_card(user_id,message_id,create_time)
-    except Exception as e:
-        logging.error("发送消息失败: %s" % e)
+        logger.info("向 %s 发送新消息卡片 %s" % (user_id,message_id))
+        database.update_card(user_id,message_id,create_time)
+    except LarkException as e:
+        logger.error("发送消息失败: %s" % e)
 
 def _create_message_card_date(
         object_id: int, 
@@ -464,35 +133,35 @@ def _create_message_card_date(
     display_target = 'list' #默认以列表方式呈现，可选为['list','object']
     try:
         if title_id == '0': #个人页
-            _list = management.get_items(user_id=user_id)
+            _list = database.get_items(user_id=user_id)
             display_target = 'object'
         elif title_id == '1': #仓库（所有物品类型）
-            _list = management.get_categories()
+            _list = database.get_categories()
         elif title_id == '2': #仓库（某类型的所有物品名）
-            _list = management.get_list(category_id=_id)
+            _list = database.get_list(category_id=_id)
         elif title_id == '3': #仓库（某名字的所有物品信息）
-            _list = management.get_items(name_id=_id)
+            _list = database.get_items(name_id=_id)
             display_target = 'object'
         elif title_id == '4': #仓库(搜索页)
             #尝试将字符串作为id进行搜索
             if can_convert_to_int(target) and int(target)>0: #id
                 try:
                     if int(target)>1000000:  #oid
-                        _list = management.get_item(oid=target)
+                        _list = database.get_item(oid=target)
                         display_target = 'object' #仅对搜索具体oid的操作以对象方式呈现
                     elif int(target)>1000: #name_id
-                        _list = management.get_list(name_id=target)
+                        _list = database.get_list(name_id=target)
                 except Exception as e:
-                    logging.error("%s" % e)
+                    logger.error("%s" % e)
             #同时按名称搜索相关物品
             if display_target == 'list':
                 if not _list:
-                    _list = management.get_list(name=target)
+                    _list = database.get_list(name=target)
                 else:
                     try:
-                        _list.update(management.get_list(name=target))
+                        _list.update(database.get_list(name=target))
                     except Exception as e:
-                        logging.error("%s" % e)
+                        logger.error("%s" % e)
         #构建参数列表
         #TODO:zip最大支持5个列表，无法显示purpose属性
         if display_target == 'list':
@@ -572,7 +241,7 @@ def create_approval_about_apply_items(
     审批定义应按照`配置指南`在控制台创造,特别是审批定义名和自定义id
     """
     for oid in selectedObjectList['oid']:
-        management.apply_item(user_id=user_id, oid=int(oid), purpose=purpose)
+        database.apply_item(user_id=user_id, oid=int(oid), purpose=purpose)
     form=[
         {'id':'do','type':'textarea','value':purpose if purpose else "None"},
         {'id':'date','type':'date',"value": 
@@ -583,13 +252,14 @@ def create_approval_about_apply_items(
 
     approval_api_event.create_instance(approval_code=APPROVAL_CODE, 
                                        user_id=user_id, form=ujson.dumps(form))
-    logging.info("发送审批,%s 申请 {selectedObjectList['oid']}" % user_id)
+    logger.info("发送审批,%s 申请 {selectedObjectList['oid']}" % user_id)
+
 
 '''
 user commands
 '''
 @celery_task
-def _create_command_message_response(
+def create_command_message_response(
     user_id: str,
     message: dict,
     sender_id: dict
@@ -665,12 +335,13 @@ def _create_command_message_response(
                         pairs = re.findall(kv_pattern, key_value_pairs)
                         params = {key: value.strip("'") for key, value in pairs}
                     #进行相应操作
-                    if not command_map[command]['needed_root'] or management.is_user_root(user_id):
+                    if not command_map[command]['needed_root'] or database.is_user_root(user_id):
                         reply_text = command_map[command]['command'](reply_map, message, sender_id, object, params)
                     else:
                         reply_text = reply_map['permission_denied']
     if reply_text not in ('', None) :
         message_api_client.send_text_with_user_id(user_id,reply_text)
+        logger.info('向 %s 发送消息 %s' % (user_id,reply_text))
 
 def _command_add_object(reply_map, message, sender_id, object, params):
     """
@@ -696,11 +367,11 @@ def _command_add_object(reply_map, message, sender_id, object, params):
         else:
             #TODO:操作执行失败的检测与处理
             if object == 'item':
-                management.add_item(params=params)
+                database.add_item(params=params)
             elif object == 'list':
-                management.add_list(params=params)
+                database.add_list(params=params)
             elif object == 'category':
-                management.add_category(params=params)
+                database.add_category(params=params)
             return reply_map['success']
         
 def _command_delete_object(reply_map, message, sender_id, object, params):
@@ -727,11 +398,11 @@ def _command_delete_object(reply_map, message, sender_id, object, params):
         else:
             #TODO:操作执行失败的检测与处理
             if object == 'item':
-                management.del_item(params=params)
+                database.del_item(params=params)
             elif object == 'list':
-                management.del_list(params=params)
+                database.del_list(params=params)
             elif object == 'category':
-                management.del_category(params=params)
+                database.del_category(params=params)
         
             return reply_map['success']
 
@@ -749,10 +420,10 @@ def _command_add_op(reply_map, message, sender_id, object, params):
                 object =  mention['name']
                 break
         
-    if not user_id or not management.get_member(user_id):
+    if not user_id or not database.get_member(user_id):
         return reply_map['invalid_object'] % f'无法识别的用户{object}'
 
-    management.set_member_root(user_id)
+    database.set_member_root(user_id)
     return reply_map['success']
 
 def _command_delete_op(reply_map, message, sender_id, object, params):
@@ -768,11 +439,11 @@ def _command_delete_op(reply_map, message, sender_id, object, params):
                 user_id = mention['id']['user_id']
                 break
     
-    if not user_id or not management.get_member(user_id):
+    if not user_id or not database.get_member(user_id):
         return reply_map['invalid_object'] % f'无法识别的用户{object}'
     
     #TODO：id不在表中如何解决？
-    management.set_member_unroot(user_id)
+    database.set_member_unroot(user_id)
     return reply_map['success']
 
 def _command_list_op(reply_map, message, sender_id, object, params):
@@ -781,7 +452,7 @@ def _command_list_op(reply_map, message, sender_id, object, params):
 
     指令参数参考`_command_get_help`
     """
-    result = management.get_members_root()
+    result = database.get_members_root()
     return ujson.dumps(result, ensure_ascii=False) if result else '当前暂无管理员'
 
 def _command_search_id(reply_map, message, sender_id, object, params):
@@ -795,10 +466,9 @@ def _command_search_id(reply_map, message, sender_id, object, params):
     
     #TODO:异常处理
     try:
-        DEBUG_OUT(data=sender_id)
         user_id = sender_id['user_id']
         content = _create_message_card_date(object_id=int(object))
-        _send_a_new_message_card(user_id, content)
+        send_a_new_message_card(user_id, content)
     
         return None
     except Exception as e:
@@ -816,7 +486,7 @@ def _command_return_item(reply_map, message, sender_id, object, params):
     #TODO:异常处理
     try:
         user_id = sender_id['user_id']
-        result = management.return_item(user_id,int(object))
+        result = database.return_item(user_id,int(object))
 
         return result
     except Exception as e:
@@ -832,16 +502,16 @@ def _command_save(reply_map, message, sender_id, object, params):
             ITEM_SHEET_TOKEN,SHEET_ID_ITEM,"COLUMNS",1,6)
         #批量保存
         start_line = end_line= 2
-        category = management.get_categories()
+        category = database.get_categories()
         for category_id,category_name in zip(
             category['id'],category['name']
         ):
-            items_list = management.get_list(category_id)
+            items_list = database.get_list(category_id)
             values = []
             for name,name_id in zip(
                 items_list['name'],items_list['id']
             ):
-                items_info = management.get_items(name_id, name)
+                items_info = database.get_items(name_id, name)
                 if not items_info:
                     continue
                 end_line += len(items_info['id'])
@@ -860,7 +530,7 @@ def _command_save(reply_map, message, sender_id, object, params):
                     values.append(value)
             spreadsheet_api_client.write_date_to_a_single_range(
                 ITEM_SHEET_TOKEN,SHEET_ID_ITEM,f"A{start_line}:G{end_line-1}",values)
-            logging.info(
+            logger.info(
                 "已保存 %s 类型的信息到电子表格中，行数%d:%d" %
                 (category_name,start_line, end_line-1))
             start_line = end_line
@@ -874,11 +544,11 @@ def _command_load(reply_map, message, sender_id, object, params):
     (指令)从设定的电子表格中读取物资(详细)信息存储当前数据库中.
     """
     try:
-        sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:G")
+        sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:G").json()
         items_info = sheet_date['data']['valueRange']['values']
-        management.del_all()
+        database.del_all()
         for item_info in items_info:
-            management.add_item(oid=item_info[0],
+            database.add_item(oid=item_info[0],
                                 name=item_info[1],
                                 category_name=item_info[2],
                                 useable=item_info[3],
@@ -915,7 +585,3 @@ def _command_get_help(reply_map, message, sender_id, object, params):
         f"{'load':<{margin}} \t(仅管理员)同步电子表格中物资情况到数据库\n"
     )
     
-
-if __name__ == "__main__":
-    # 启动服务
-    app.run(host="0.0.0.0", port=3000, debug=True)

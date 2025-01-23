@@ -1,0 +1,3 @@
+[submodule "feishu_api"]
+	path = scripts/api/feishu_api
+	url = git@github.com:Smoaflie/Feishu_api.git

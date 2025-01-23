@@ -1,5 +1,6 @@
 import ujson
-
+import sys
+import os
 """
 该文件存储了一些工具类函数
 """
@@ -90,3 +91,28 @@ def replace_placeholders(data, values):
         for key, value in values.items():
             data = data.replace(f"${{{key}}}", str(value))
     return data
+
+def load_file(file_path):
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return ujson.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Configuration file not found: {file_path}")
+    except ujson.JSONDecodeError as e:
+        raise ValueError(f"Error decoding JSON in {file_path}: {e}")
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error occurred while reading {file_path}: {e}")
+
+def get_project_root():
+    """
+    获取当前工程目录的根路径，通过递归查找特定标志文件或文件夹。
+    """
+    current_path = os.path.abspath(os.path.dirname(__file__))
+    while current_path:
+        if any(os.path.exists(os.path.join(current_path, marker)) for marker in ['main.py']):
+            return current_path
+        parent_path = os.path.dirname(current_path)
+        if parent_path == current_path:  # 已经到根目录
+            break
+        current_path = parent_path
+    raise RuntimeError("无法找到工程根目录，请确保有标志文件（如 requirements.txt 或 .git）")

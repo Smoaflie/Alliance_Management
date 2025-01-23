@@ -1,10 +1,12 @@
-Flask==2.0.2
+Flask
+ujson
+redis
+Celery
+
 python-dotenv
 requests
 pycryptodome
 Werkzeug<3
 pymysql
-ujson
 DBUtils
-Celery
-redis
+cryptography

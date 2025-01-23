@@ -6,3 +6,4 @@ datasheet/
 request.json
 setting.json
 .env
+.logs/app.log

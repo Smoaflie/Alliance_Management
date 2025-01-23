@@ -14,18 +14,6 @@ from scripts.api.api_feishu_clients import CloudApiClient
 from scripts.api.api_feishu_clients import ApprovalApiClient
 from scripts.api.api_feishu_events import EventManager
 
-def table_exists(cursor, table_name):
-    """
-    检查表是否已经存在
-    """
-    cursor.execute("SHOW TABLES LIKE '%s';" % table_name)
-    return cursor.fetchone() is not None
-def trigger_exists(cursor, trigger_name):
-    """
-    检查触发器是否已经存在
-    """
-    cursor.execute("SELECT * FROM information_schema.TRIGGERS WHERE TRIGGER_NAME = '%s';" % trigger_name)
-    return cursor.fetchone() is not None
 
 def init_from_feishu():
     #以下内容直接从server搬过来的，没进行优化

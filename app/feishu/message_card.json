@@ -1,0 +1,211 @@
+{
+    "display":
+    {
+        "config": {
+            "update_multi": true,
+            "width_mode": "compact"
+        },
+        "elements": [
+            {
+                "tag": "column_set",
+                "background_style": "grey",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": "<font color=grey>**${title}**</font>"
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "主页"
+                                },
+                                "icon": {
+                                    "tag": "standard_icon",
+                                    "token": "home_outlined"
+                                },
+                                "behaviors": [
+                                    {
+                                        "type": "callback",
+                                        "value": {
+                                            "name": "home"
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "个人"
+                                },
+                                "icon": {
+                                    "tag": "standard_icon",
+                                    "token": "contacts_outlined"
+                                },
+                                "behaviors": [
+                                    {
+                                        "type": "callback",
+                                        "value": {
+                                            "name": "self"
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        "weight": 1
+                    },
+                    {
+                        "tag": "column",
+                        "width": "weighted",
+                        "elements": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "返回"
+                                },
+                                "complex_interaction": true,
+                                "icon": {
+                                    "tag": "standard_icon",
+                                    "token": "undo_outlined"
+                                },
+                                "value": {
+                                    "name": "back",
+                                    "id": "${father_id}"
+                                }
+                            }
+                        ],
+                        "weight": 1
+                    }
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "input",
+                        "placeholder": {
+                            "tag": "plain_text",
+                            "content": "搜索"
+                        },
+                        "name": "input.search",
+                        "value":{
+                            
+                        }
+                    }
+                ]
+            },
+            {
+                "tag": "markdown",
+                "content":"${title_text}"
+            },
+            {
+                "tag": "hr"
+            }
+        ],
+        "header": {}
+    },
+    "display_repeat_elements":{
+        "tag": "checker",  
+        "checked": false,  
+        "text": {  
+          "tag": "lark_md", 
+          "text_size":"normal",
+          "text_color":"green",
+          "content": "${checker_text}"
+        },
+        "disabled":true,
+        "button_area": {  
+          "buttons": [  
+            {
+              "tag": "button",  
+              "type": "primary_text",
+              "icon": {   
+                "tag": "standard_icon",
+                "token": "mosaic-smear_outlined"
+              },
+              "value": {
+                    "name": "object.inspect",
+                    "object_param_1": "${param1}",
+                    "object_param_2": "${param2}",
+                    "object_param_3": "${param3}",
+                    "id": "${param1}"
+                }
+            }
+          ]
+        },
+        "behaviors": [  
+          {
+            "type": "callback", 
+            "value": {
+                "name":"${name}",
+                "oid":"${oid}"
+            }
+          }
+        ]
+    },    
+    "button_confirm":{
+        "title": {
+            "tag": "plain_text",
+            "content": "Confirm"
+        },
+        "text": {
+            "tag": "plain_text",
+            "content": "${name} oid:${oid}\n当前位置:${wis}\t当前状态:${useable}\n备注：${do}"
+        }
+    },
+    "form":{
+        "tag": "form",
+        "name": "Form_lvxmxsxf",
+        "elements": [
+            {
+                "tag": "markdown",
+                "content":"**已选择:**"
+            },
+            {
+                "tag": "markdown",
+                "content":""
+            },
+            {
+                "tag": "input",
+                "name": "Input_value",
+                "placeholder": {
+                    "tag": "plain_text",
+                    "content": "请输入申领理由"
+                }
+            },
+            {
+                "action_type": "form_submit",
+                "name": "form_button",
+                "tag": "button",
+                "text": {
+                    "content": "提交",
+                    "tag": "lark_md"
+                },
+                "type": "primary",
+                "value":{
+                    
+                }
+            }
+        ]
+    }
+}
