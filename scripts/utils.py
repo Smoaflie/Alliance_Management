@@ -116,3 +116,12 @@ def get_project_root():
             break
         current_path = parent_path
     raise RuntimeError("无法找到工程根目录，请确保有标志文件（如 requirements.txt 或 .git）")
+
+def safe_get(data, *keys, default=None):
+    """安全地从嵌套字典中获取值"""
+    for key in keys:
+        if isinstance(data, dict):
+            data = data.get(key)
+        else:
+            return default
+    return data

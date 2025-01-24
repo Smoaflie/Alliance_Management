@@ -28,6 +28,7 @@ from app.feishu.commands import (
 from scripts.utils import (
     obj_2_dict,
     DEBUG_OUT,
+    safe_get
 )
 from scripts.api.feishu_api import (
     MessageReceiveEvent,
@@ -74,8 +75,8 @@ def callback_event_handler():
     if requests.get('uuid'):  #回调
         logger.info("fetch request,uuid:%s" % requests['uuid'])
     elif requests.get("event"): #事件
-        event_id = requests.get('header').get('event_id')
-        create_time = requests.get('header').get('create_time')
+        event_id = safe_get(requests,'header','event_id')
+        create_time = safe_get(requests,'header','create_time')
         logger.info("fetch event,event_id:%s" % event_id)
         #使用redis监测重复请求
         if redis_client.exists(event_id): #请求已处理，跳过
@@ -247,14 +248,15 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
     logger.info("approval_code:%s" % approval_code)
 
     if approval_code == APPROVAL_CODE:
-        instance = approval_api_event.fetch_instance(event.instance_code).json()
-        applicant_user_id = instance.get('data').get('timeline')[0].get('user_id')
+        resp = approval_api_event.fetch_instance(event.instance_code)
+        instance = resp.json()
+        applicant_user_id = safe_get(instance,'data','timeline',0,'user_id')
         #TODO:同意和拒绝的结构不一样，现在写的是不好的解决办法
-        operator_user_id = (instance.get('data').get('timeline')[-1].get('user_id')
-                            if instance.get('data').get('timeline')[-1].get('user_id') 
-                            else instance.get('data').get('timeline')[-2].get('user_id'))
+        operator_user_id = (safe_get(instance,'data','timeline',-1,'user_id')
+                            if safe_get(instance,'data','timeline',-1,'user_id') 
+                            else safe_get(instance,'data','timeline',-2,'user_id'))
         if status in ('APPROVED', 'REJECTED','CANCELED','DELETED'): 
-            form = ujson.loads(instance.get('data').get('form'))
+            form = ujson.loads(safe_get(instance,'data','form'))
             params = {}
             params['do'] = form[0].get('value')
             params['time'] = form[1].get('value')

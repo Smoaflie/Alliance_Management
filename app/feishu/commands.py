@@ -25,7 +25,8 @@ from scripts.utils import (
     can_convert_to_int,
     format_with_margin,
     load_file,
-    replace_placeholders
+    replace_placeholders,
+    safe_get
 )
 
 logger = logging.getLogger(__name__)
@@ -66,8 +67,8 @@ def send_a_new_message_card(user_id: str, content: dict):
 
         resp = message_api_client.send_interactive_with_user_id(user_id, content)
         result = resp.json()
-        message_id = result.get('data').get('message_id')
-        create_time = result.get('data').get('create_time')
+        message_id = safe_get(result,'data','message_id')
+        create_time = safe_get(result,'data','create_time')
         logger.info("向 %s 发送新消息卡片 %s" % (user_id,message_id))
         database.update_card(user_id,message_id,create_time)
     except LarkException as e:
