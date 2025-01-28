@@ -14,6 +14,8 @@ def init_project_feishu(feishu_config):
     # 注册蓝图
     from app.feishu.events import events_bp
     from app.feishu.mini_program import mini_program_bp
+    from app.feishu.web import web_bp
     feishu_bp.register_blueprint(events_bp)
     feishu_bp.register_blueprint(mini_program_bp)
+    feishu_bp.register_blueprint(web_bp)
     

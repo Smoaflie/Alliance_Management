@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>队伍页面</title>
+    <link rel="stylesheet" href="./public/index.css" />
+    <script src="https://cdn.staticfile.org/jquery/1.10.2/jquery.min.js"></script>
+    <!-- 引入 JSSDK -->
+    <!-- JS 文件版本在升级功能时地址会变化，如有需要（比如使用新增的 API），请重新引用「网页应用开发指南」中的JSSDK链接，确保你当前使用的JSSDK版本是最新的。-->
+    <script
+      type="text/javascript"
+      src="https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.16.js"
+    ></script>
+    <!-- 在页面上添加VConsole方便调试-->
+    <script src="https://unpkg.com/vconsole/dist/vconsole.min.js"></script>
+    <script>
+      var vConsole = new window.VConsole();
+    </script>
+  </head>
+
+  <body>
+    <div>
+      <div class="img">
+        <!-- 头像 -->
+        <div id="img_div" class="img_div"></div>
+        <div id="hello_text_welcome" class="text_hello"></div>
+        <!-- 名称 -->
+        <div id="hello_text_name" class="text_hello_name"></div>
+        <!-- 欢迎语 -->
+        <div id="hello_text_welcome" class="text_hello_welcome"></div>
+      </div>
+      <!-- 飞书icon -->
+      <div class="icon"><img src="./public/svg/icon.svg" /></div>
+    </div>
+    <script src="./public/index.js"></script>
+  </body>
+</html>

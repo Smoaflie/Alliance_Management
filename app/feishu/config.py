@@ -19,6 +19,8 @@ redis_client = app.config.get('redis_client')
 
 feishu_config = app.config.get("feishu")
 # 飞书后台配置
+FEISHU_HOST = "https://open.feishu.cn"
+
 env = feishu_config.get('env')
 APP_ID = env.get("APP_ID")
 APP_SECRET = env.get("APP_SECRET")

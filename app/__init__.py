@@ -24,7 +24,6 @@ app.config['redis_client'] = init_redis(app.config.get('redis'))
 def init_app(app):
     # 初始化database
     app.config["database"].init_database()
-
     # 初始化子模块
     init_projects(app)
     # 注册蓝图

@@ -59,7 +59,7 @@ logger = FeishuLogger()
 '''
 Flask app function
 '''
-@events_bp.route("/", methods=["POST"], strict_slashes=False)
+@events_bp.route("/subscribe/", methods=["POST"], strict_slashes=False)
 def callback_event_handler():    
     """
     处理飞书的事件/回调
