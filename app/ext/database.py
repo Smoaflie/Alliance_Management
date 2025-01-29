@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import sys
 import time
 
 from scripts.api.mysql_connector import MySql
@@ -23,7 +24,22 @@ class Database(MySql) :
         port = config.get('port')
         user = config.get('user')
         password = config.get('password')
-        super().__init__(host, port, user, password)
+        try:
+            super().__init__(host, port, user, password)
+        except Exception as e:
+            # 获取异常类型
+            exception_type = type(e).__name__
+            # 获取异常的错误码和错误信息
+            error_code = e.args[0]  # 错误码
+            error_message = e.args[1]  # 错误信息
+            # 打印或处理异常信息
+            logger.error(
+                f"Create mysql connect error: \n\t"
+                f"Exception Type: {exception_type}, \n\t"
+                f"Error Code: {error_code}, \n\t"
+                f"Error Message: {error_message}"
+            )
+            sys.exit("创建Mysql连接错误，请检查配置")
         self.db = config.get('db')
         super().set_default_db(self.db)
 

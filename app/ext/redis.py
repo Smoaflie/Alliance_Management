@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import redis
 
@@ -19,4 +20,5 @@ def init_redis(redis_config):
             logger.error(f"Redis {redis_path}: 连接失败")
         return redis_client
     except redis.ConnectionError as e:
-        logger.error(f"Redis {redis_path} 连接错误: {e}")
+        sys.exit(f"Redis {redis_path} 连接错误: {e}"
+                 "请检查配置")

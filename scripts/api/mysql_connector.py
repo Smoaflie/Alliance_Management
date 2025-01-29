@@ -204,7 +204,7 @@ class MySql:
 
     def __del__(self):
         """清理连接池."""
-        if self.pool:
+        if hasattr(self, 'pool'):
             self.pool.close()
 
 class SQLException(Exception):
