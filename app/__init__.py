@@ -36,4 +36,8 @@ def init_projects(app):
 
 def register_blueprints(app):
     from app.feishu import feishu_bp
+    from app.web import web_bp
+    from app.api import api_bp
     app.register_blueprint(feishu_bp)
+    app.register_blueprint(web_bp)
+    app.register_blueprint(api_bp)

@@ -18,7 +18,7 @@ from app.feishu.config import (
     approval_api_event,
     event_manager,
 )
-from app.feishu.commands import (
+from app.feishu.commands.application import (
     create_command_message_response,
     _create_message_card_date,
     send_a_new_message_card,
@@ -249,7 +249,7 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
 
     if approval_code == APPROVAL_CODE:
         resp = approval_api_event.fetch_instance(event.instance_code)
-        instance = resp.json()
+        instance = resp
         applicant_user_id = safe_get(instance,'data','timeline',0,'user_id')
         #TODO:同意和拒绝的结构不一样，现在写的是不好的解决办法
         operator_user_id = (safe_get(instance,'data','timeline',-1,'user_id')

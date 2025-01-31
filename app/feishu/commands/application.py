@@ -65,8 +65,7 @@ def send_a_new_message_card(user_id: str, content: dict):
             database.update_card(user_id)
             message_api_client.recall(alive_card_id)
 
-        resp = message_api_client.send_interactive_with_user_id(user_id, content)
-        result = resp.json()
+        result = message_api_client.send_interactive_with_user_id(user_id, content)
         message_id = safe_get(result,'data','message_id')
         create_time = safe_get(result,'data','create_time')
         logger.info("向 %s 发送新消息卡片 %s" % (user_id,message_id))
@@ -546,7 +545,7 @@ def _command_load(reply_map, message, sender_id, object, params):
     (指令)从设定的电子表格中读取物资(详细)信息存储当前数据库中.
     """
     try:
-        sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:G").json()
+        sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:G")
         items_info = sheet_date['data']['valueRange']['values']
         database.del_all()
         for item_info in items_info:

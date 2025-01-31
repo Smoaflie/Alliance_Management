@@ -7,6 +7,7 @@ from scripts.api.feishu_api import (
     ContactApiClient,
     CloudApiClient,
     ApprovalApiClient,
+    TaskApiClient,
     EventManager,
     LarkException
 )
@@ -48,6 +49,7 @@ message_api_client = MessageApiClient(APP_ID, APP_SECRET, LARK_HOST)
 contact_api_client = ContactApiClient(APP_ID, APP_SECRET, LARK_HOST)
 cloud_api_client = CloudApiClient(APP_ID, APP_SECRET, LARK_HOST)
 approval_api_event = ApprovalApiClient(APP_ID, APP_SECRET, LARK_HOST)
+task_api_client = TaskApiClient(APP_ID, APP_SECRET, LARK_HOST)
 event_manager = EventManager()
 
 def update_members():
@@ -61,7 +63,7 @@ def update_members():
         page_token = None
         while(True):
             resp = contact_api_client.fetch_scopes(user_id_type='user_id', page_token=page_token)
-            result = resp.json()
+            result = resp
             user_ids += result.get('data').get('user_ids')
             page_token = result.get('data').get("page_token")
             if not page_token:
@@ -77,7 +79,7 @@ def update_members():
 
         if MD5local != MD5remote:
             resp = contact_api_client.get_users_batch(user_ids=user_ids, user_id_type='user_id')
-            items = resp.json().get('data').get('items')
+            items = resp.get('data').get('items')
             user_list = list()
             for item in items:
                 user_list.append({

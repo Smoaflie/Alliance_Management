@@ -7,9 +7,9 @@ from flask import jsonify
 from flask import request
 from scripts.utils import DEBUG_OUT
 
-mini_program_bp = Blueprint('feishu_mini_program_bp', __name__)
+items_bp = Blueprint('api_items_bp', __name__)
 
-@mini_program_bp.route("/fetch", methods=["GET"])
+@items_bp.route("/fetch", methods=["GET"])
 def fetch():
     oid = request.args.get("oid")
     try:
@@ -19,7 +19,7 @@ def fetch():
     except ValueError:
         abort(404, description=f"Item with oid:{oid} not found")
         
-@mini_program_bp.route("/operate", methods=["POST"])
+@items_bp.route("/operate", methods=["POST"])
 def operate():
     DEBUG_OUT(data = request.json)
     object = request.json.get("object")
@@ -36,7 +36,7 @@ def operate():
             if item_info['useable'][0] != '可用':
                 error_message = f'Error: 物品不可用,oid: {object['oid']}'
             if not error_message:
-                from app.feishu.commands import create_approval_about_apply_items
+                from app.feishu.commands.application import create_approval_about_apply_items
                 create_approval_about_apply_items(user_id=operator_user_id,
                     selectedObjectList={"name":[object['name']], "oid":[object['oid']]},purpose=purpose)
                 return jsonify('success: 已发送申请')
