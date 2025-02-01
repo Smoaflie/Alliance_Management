@@ -7,22 +7,12 @@ from requests import HTTPError
 from app.decorators import rate_limit
 from app.feishu.config import database
 from app.feishu.config import redis_client
-from app.feishu.config import (
-    VERIFICATION_TOKEN,
-    ENCRYPT_KEY,
-    APPROVAL_CODE,
-    spreadsheet_api_client,
-    message_api_client,
-    contact_api_client,
-    cloud_api_client,
-    approval_api_event,
-    event_manager,
-)
+from app.feishu.config import FEISHU_CONFIG as _fs
 from app.feishu.commands.application import (
     create_command_message_response,
-    _create_message_card_date,
+    create_message_card_date,
     send_a_new_message_card,
-    _update_message_card,
+    update_message_card,
     create_approval_about_apply_items
 )
 from scripts.utils import (
@@ -30,12 +20,13 @@ from scripts.utils import (
     DEBUG_OUT,
     safe_get
 )
-from scripts.api.feishu_api import (
+from scripts.api.feishu import (
     MessageReceiveEvent,
     UrlVerificationEvent,
     BotMenuClickEvent,
     CardActionEvent,
     ApprovalInstanceEvent,
+    EventManager
 )
 
 '''
@@ -56,9 +47,13 @@ class FeishuLogger():
         self.logger.warning(msg, *args, **kwargs)
 logger = FeishuLogger()
 
+# 审批参数
+APPROVAL_CODE = _fs.approval.approval_code
 '''
 Flask app function
 '''
+event_manager = EventManager()
+
 @events_bp.route("/subscribe/", methods=["POST"], strict_slashes=False)
 def callback_event_handler():    
     """
@@ -72,19 +67,20 @@ def callback_event_handler():
     """
     requests = request.json
     DEBUG_OUT(requests)
+    timestamp = safe_get(requests,'event','timestamp')
     if requests.get('uuid'):  #回调
-        logger.info("fetch request,uuid:%s" % requests['uuid'])
+        logger.info("fetch request,uuid:%s, timestamp:%s" % (requests['uuid'], timestamp))
     elif requests.get("event"): #事件
         event_id = safe_get(requests,'header','event_id')
         create_time = safe_get(requests,'header','create_time')
-        logger.info("fetch event,event_id:%s" % event_id)
+        logger.info("fetch event,event_id:%s, timestamp:%s" % (event_id, timestamp))
         #使用redis监测重复请求
         if redis_client.exists(event_id): #请求已处理，跳过
             logger.error("This event has been handled. event_id:%s" % event_id)
             return jsonify()
         else:
             redis_client.set(event_id, create_time, ex=3600)
-    event_handler, event = event_manager.get_handler_with_event(VERIFICATION_TOKEN, ENCRYPT_KEY)
+    event_handler, event = event_manager.get_handler_with_event(_fs.VERIFICATION_TOKEN, _fs.ENCRYPT_KEY)
     # 运行协程并返回响应
     return event_handler(event)
 
@@ -104,19 +100,33 @@ event handler function
 @event_manager.register("url_verification")
 def request_url_verify_handler(req_data: UrlVerificationEvent):
     # url verification, just need return challenge
-    if req_data.event.token != VERIFICATION_TOKEN:
+    if req_data.event.token != _fs.VERIFICATION_TOKEN:
         raise Exception("VERIFICATION_TOKEN is invalid")
     return jsonify({"challenge": req_data.event.challenge})
 
 @event_manager.register("im.message.receive_v1")
 def message_receive_event_handler(req_data: MessageReceiveEvent):
     """事件 接收消息-`im.message.receive_v1`的具体处理"""
-    user_id = req_data.event.sender.sender_id.user_id
+    sender_user_id = req_data.event.sender.sender_id.user_id
     message = obj_2_dict(req_data.event.message)
-    sender_id = obj_2_dict(req_data.event.sender.sender_id)
-    logger.info("user_id:%s, message:%s" % (user_id, message))
-    create_command_message_response(user_id=user_id,message=message,sender_id=sender_id)
+    chat_id = req_data.event.message.chat_id
+    chat_type = req_data.event.message.chat_type
+    logger.info("chat_id:%s,\n\tsender_user_id:%s, chat_type:%s,message:\n\t%s" % (chat_id, chat_type, sender_user_id, message))
+    if chat_type == "p2p":
+        sender_id = obj_2_dict(req_data.event.sender.sender_id)
+        create_command_message_response(user_id=sender_user_id,message=message,sender_id=sender_id)
+    elif chat_type == "group":
+        thread_id = req_data.event.message.thread_id
+        pass
+    return jsonify()
 
+@event_manager.register("im.message.recalled_v1")
+def message_recalled_event_handler(req_data: MessageReceiveEvent):
+    """事件 撤回消息-`im.message.recalled_v1`的具体处理"""
+    event = req_data.event
+    chat_id = event.chat_id
+    message_id = event.message_id
+    logger.info("in chat_id:%s, message_id:%s was recalled" % (chat_id,message_id))
     return jsonify()
 
 @event_manager.register("application.bot.menu_v6")
@@ -130,7 +140,7 @@ def bot_mene_click_event_handler(req_data: BotMenuClickEvent):
     logger.info("user_id:%s, event_key:%s" % (user_id, event_key))
     if event_key == 'custom_menu.inspect.items':
     #获取全部物品类型，配置映射
-        content = _create_message_card_date(object_id=0)
+        content = create_message_card_date(object_id=0)
         send_a_new_message_card(user_id, content)
     return jsonify()
 
@@ -150,7 +160,7 @@ def card_action_event_handler(req_data: CardActionEvent):
 
     if alife_card_id and alife_card_id!=current_card_id:
         logger.info("The card is too old, try to recall it.")
-        message_api_client.recall(current_card_id)
+        _fs.api.message.recall(current_card_id)
         toast = {
                 'type':'error',
                 'content':'Error: 该消息卡片已过期，请使用新卡片'
@@ -193,30 +203,30 @@ def card_action_event_handler(req_data: CardActionEvent):
                                 'type':'success',
                                 'content':'success: 已发送申请'
                             }                    
-                    _update_message_card(token, object_id=0, selectedObjectList=selectedObjectList)
+                    update_message_card(token, object_id=0, selectedObjectList=selectedObjectList)
             else:
                 if value.name == 'home':
-                    _update_message_card(token, object_id=0, selectedObjectList=selectedObjectList)
+                    update_message_card(token, object_id=0, selectedObjectList=selectedObjectList)
                 elif value.name == 'self':
-                    _update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
+                    update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
                 elif value.name == 'object.inspect':
-                    _update_message_card(token, object_id=int(value.id), selectedObjectList=selectedObjectList)
+                    update_message_card(token, object_id=int(value.id), selectedObjectList=selectedObjectList)
                 elif value.name == 'back':
                     if int(value.id) != 0: #主页时的返回按钮不可用
-                        _update_message_card(token, object_id=int(value.id)//1000, selectedObjectList=selectedObjectList)                        
+                        update_message_card(token, object_id=int(value.id)//1000, selectedObjectList=selectedObjectList)                        
                 elif value.name == 'object.return':
                     toast = {
                         'type':'success',
                         'content':'success: 已归还'
                     }
                     database.return_item(user_id,value.object_param_1)
-                    _update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
+                    update_message_card(token, object_id=-1, user_id=user_id, selectedObjectList=selectedObjectList)
         elif tag == 'input':
             input_value = event.action.input_value
             selectedObjectList = event.action.value.selectedObjectList.__dict__
             
             if event.action.name == "input.search":
-                _update_message_card(token, object_id=-2, target=input_value, selectedObjectList=selectedObjectList)
+                update_message_card(token, object_id=-2, target=input_value, selectedObjectList=selectedObjectList)
         elif tag == 'checker':
             checked = event.action.checked
             selectedObjectList = event.action.value.selectedObjectList.__dict__
@@ -230,7 +240,7 @@ def card_action_event_handler(req_data: CardActionEvent):
                     del selectedObjectList['oid'][index]
                 except ValueError:
                     pass
-            _update_message_card(token, object_id=int(event.action.value.oid)//1000, selectedObjectList=selectedObjectList)
+            update_message_card(token, object_id=int(event.action.value.oid)//1000, selectedObjectList=selectedObjectList)
 
 
     request_data = {
@@ -248,7 +258,7 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
     logger.info("approval_code:%s" % approval_code)
 
     if approval_code == APPROVAL_CODE:
-        resp = approval_api_event.fetch_instance(event.instance_code)
+        resp = _fs.api.approval.get_instance(event.instance_code)
         instance = resp
         applicant_user_id = safe_get(instance,'data','timeline',0,'user_id')
         #TODO:同意和拒绝的结构不一样，现在写的是不好的解决办法
@@ -274,7 +284,4 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
                                                 operation=status,useable=0,wis=applicant_name,do=params['do'])
                 logger.info("审批：%s同意对 %s 的申请" % (
                                 operator_user_id, params['objectList']['oid']))
-
-
     return jsonify()
-

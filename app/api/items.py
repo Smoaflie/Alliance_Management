@@ -48,8 +48,8 @@ def operate():
         elif operation == 'report':
             msg = f"{operator} 报告物品 {object} 存在问题： {msg}"
             from app.feishu.config import message_api_client
-            from app.feishu.config import ADMIN_USER_ID
-            message_api_client.send_text_with_user_id(ADMIN_USER_ID,msg)
+            # from app.feishu.config import ADMIN_USER_ID
+            # message_api_client.send_text_with_user_id(ADMIN_USER_ID[0],msg)
             return jsonify()
     except ValueError as e:
         return abort(500, description=f"Error: {e}")

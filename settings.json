@@ -1,12 +1,10 @@
 {
     "feishu": {
-        "env": {
-            "APP_ID": "cli_a78cfcfbc2f9900e",
-            "APP_SECRET": "ogpskhllkDDvW3EYB1DkOgtVfpaCyIlX",
-            "VERIFICATION_TOKEN": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
-            "ENCRYPT_KEY": "",
-            "LARK_HOST": "https://open.feishu.cn"
-        },
+        "APP_ID": "cli_a78cfcfbc2f9900e",
+        "APP_SECRET": "ogpskhllkDDvW3EYB1DkOgtVfpaCyIlX",
+        "VERIFICATION_TOKEN": "FTYKNo3o8OgODsj9SpT5CfJpDo0y0kal",
+        "ENCRYPT_KEY": "",
+        "LARK_HOST": "https://open.feishu.cn",
         "sheet": {
             "token": "KlYDsOIVphwX8ItaJ90cf156n0s",
             "sheet_id_TOTAL": "3e1df5",
@@ -15,8 +13,12 @@
         "approval": {
             "approval_code": "83CEE9CB-A6D5-4501-B509-4F53D7EBC1D9"
         },
-        "management": {
-            "admin_user_id": "f1549d18"
+        "projects_management": {
+            "chat_id":"oc_e373c228a55f34a70af85dce94d96e23"
+        },
+        "admin_config": {
+            "user_id_list":["f1549d18"],
+            "chat_id":"oc_4bfd67153f753eaba0cd6f447f0568a5"
         }
     },
     "mysql": {

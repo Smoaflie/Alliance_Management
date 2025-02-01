@@ -28,8 +28,8 @@ logging.basicConfig(
 if __name__ == "__main__":
     init_app(app)
     from flask import url_for
-    # with app.app_context():
-    #     print(app.url_map)
+    with app.app_context():
+        print(app.url_map)
         # print(url_for('feishu.feishu_web.get_home'))
     app.run(debug=True)
     

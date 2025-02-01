@@ -3,7 +3,7 @@ import logging
 import sys
 import time
 
-from scripts.api.mysql_connector import MySql
+from scripts.api.mysql_connector import MySql, sync_table, sync_triggers
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +339,7 @@ class Database(MySql) :
                 'name': user_name
             }
             super().insert('members', ins)
+
     def add_member_batch(self, user_list: list):
         """批量添加用户"""
         for user in user_list:
@@ -506,7 +507,6 @@ class Database(MySql) :
             num_broken = num_broken - father_recoder[5] if num_broken - father_recoder[5] > 0 else 0
         if num != 0:
             self.add_item(name_id,name,num,num_broken,category_name,category_id)
-
 
     def add_list(
         self, 
@@ -833,151 +833,159 @@ class Database(MySql) :
             super().insert('logs',{'time':'0', 'userId':'0', 'operation':'CONFIG',
                                      'do':'used to detect changes in the spreadsheet.'})
         super().update('logs',('do','used to detect changes in the spreadsheet.'),{'time':itemSheet_md5})
-    
 
-    def init_database(self):
-        """初始化数据库"""
-        if not super().is_database_exists(self.db):
-            super().create_database(self.db)
-        super().set_default_db(self.db)
-        """初始化表"""
-        self.init_tables()
-        """初始化触发器"""
-        self.init_trigger()
-    
-    def init_tables(self):
-        tables = {
-            # logs 用于存储日志，这个表比较混乱 
-                # `id` 日志ID  
-                # `time` 提交时间  
-                # `userId` 操作人id  
-                # `operation` 操作内容 
-                # `object` 操作对象  
-                # `do` 备注  
-            'logs': '''CREATE TABLE `logs` (
-            `id` int(255) AUTO_INCREMENT PRIMARY KEY,
-            `time` text NOT NULL,
-            `userId` text NOT NULL,
-            `operation` text NOT NULL,
-            `object` int(255) DEFAULT NULL,
-            `do` text
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
-            # item_category 用于存储物资分类
-                # `id` 分类ID  
-                # `name` 分类名称
-                # `total` 分类下物资数
-            'item_category': '''CREATE TABLE `item_category` (
-            `id` int(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY, 
-            `name` text NOT NULL,
-            `total` int(11) NOT NULL DEFAULT 0
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
-            #  item_list 存储物资列表
-                # `id` 6位对象ID，前3位为对应分类ID
-                # `father` 对应分类ID(3位)
-                # `name` 物资名称
-                # `total`  物资总数
-                # `free`    空闲物资数
-            'item_list': '''CREATE TABLE `item_list` (
-            `id` int(10) UNSIGNED NOT NULL PRIMARY KEY,
-            `father` int(255) UNSIGNED NOT NULL,
-            `name` text NOT NULL,
-            `total` int(6) NOT NULL DEFAULT 0,
-            `free` int(6) NOT NULL DEFAULT 0,
-            `broken` int(6) NOT NULL DEFAULT 0
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
-            #  存储物资详细信息  
-                # `id` 11位对象ID，前6位为对应物品ID
-                # `father` 对应物品ID  
-                # `useable` 是否可用    1可用，0已借出，2维修中，3报废，4申请中
-                # `wis` 当前位置  
-                # `do` 备注
-                # `purpose` 用途
-            'item_info': '''CREATE TABLE `item_info` (
-            `id` int(10) UNSIGNED NOT NULL PRIMARY KEY,
-            `father` int(255) UNSIGNED NOT NULL,
-            `useable` int(2) NOT NULL DEFAULT 1,
-            `wis` text,
-            `do` text,
-            `purpose` text,
-            FOREIGN KEY (father) REFERENCES item_list(id)
-            ON UPDATE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;''',
-            #  存储成员信息  
-                # `id` 索引
-                # `user_id` 飞书user_id  
-                # `name` 实名
-                # `root` 管理 1是0否   
-                # `card_message_id` 用户会话中消息卡片的message_id
-                # `card_message_create_time` 用户会话中消息卡片的创建时间
-            'members': '''CREATE TABLE `members` (
-            `user_id` text NOT NULL,
-            `name` text NOT NULL,
-            `root` int(1) NOT NULL DEFAULT 0,
-            `card_message_id` text,
-            `card_message_create_time` text
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'''
+def init_database(database : Database):
+    """初始化数据库"""
+    if not database.is_database_exists(database.db):
+        database.create_database(database.db)
+    database.set_default_db(database.db)
+    """初始化表"""
+    init_tables(database)
+    """初始化触发器"""
+    init_trigger(database)
+
+def init_tables(database : Database):
+    tables_config = {
+        "logs": {
+            "columns": [
+                ("id", "int(255)", "AUTO_INCREMENT PRIMARY KEY"),
+                ("time", "text", "NOT NULL"),
+                ("userId", "text", "NOT NULL"),
+                ("operation", "text", "NOT NULL"),
+                ("object", "int(255)", "DEFAULT NULL"),
+                ("do", "text", "")
+            ],
+            "foreign_keys": None,
+            "options": "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        },
+        "item_category": {
+            "columns": [
+                ("id", "int(6) UNSIGNED", "AUTO_INCREMENT PRIMARY KEY"),
+                ("name", "text", "NOT NULL"),
+                ("total", "int(11)", "NOT NULL DEFAULT 0")
+            ],
+            "foreign_keys": None,
+            "options": "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        },
+        "item_list": {
+            "columns": [
+                ("id", "int(10) UNSIGNED", "NOT NULL PRIMARY KEY"),
+                ("father", "int(255) UNSIGNED", "NOT NULL"),
+                ("name", "text", "NOT NULL"),
+                ("total", "int(6)", "NOT NULL DEFAULT 0"),
+                ("free", "int(6)", "NOT NULL DEFAULT 0"),
+                ("broken", "int(6)", "NOT NULL DEFAULT 0")
+            ],
+            "foreign_keys": None,
+            "options": "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        },
+        "item_info": {
+            "columns": [
+                ("id", "int(10) UNSIGNED", "NOT NULL PRIMARY KEY"),
+                ("father", "int(255) UNSIGNED", "NOT NULL"),
+                ("useable", "int(2)", "NOT NULL DEFAULT 1"),
+                ("wis", "text", ""),
+                ("do", "text", ""),
+                ("purpose", "text", "")
+            ],
+            "foreign_keys": [
+                {
+                    "columns": ["father"],
+                    "ref_table": "item_list",
+                    "ref_columns": ["id"],
+                    "on_update": "CASCADE"
+                }
+            ],
+            "options": "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        },
+        "members": {
+            "columns": [
+                ("user_id", "text", "NOT NULL"),
+                ("open_id", "text", "NOT NULL"),
+                ("name", "text", "NOT NULL"),
+                ("root", "int(1)", "NOT NULL DEFAULT 0"),
+                ("card_message_id", "text", ""),
+                ("card_message_create_time", "text", "")
+            ],
+            "foreign_keys": None,
+            "options": "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        },
+        "projects": {
+            "columns": [
+                ("creator", "text", "NOT NULL"),
+                ("creator_open_id", "text", "NOT NULL"),
+                ("thread_id", "text", "NOT NULL"),
+                ("message_id", "text", "NOT NULL"),
+                ("create_time", "text", "NOT NULL"),
+                ("update_time", "text", "NOT NULL"),
+                ("deleted", "int(1)", "NOT NULL DEFAULT 0")
+            ],
+            "foreign_keys": None,
+            "options": "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         }
-        for key, value in tables.items():
-            if not super().is_table_exists(key):
-                with super().get_connection(self.db).cursor() as cursor:
-                    cursor.execute(value)
-                    logger.info(f"Table {key} created.")
+    }
+    conn = database.get_connection()
+    for table_name, config in tables_config.items():
+        sync_table(
+            cursor=conn.cursor(),
+            table_name=table_name,
+            column_defs=config["columns"],
+            foreign_keys=config["foreign_keys"],
+            table_options=config["options"]
+        )
+    conn.commit()
 
-    def init_trigger(self):
-        triggers = {
-            # 当表item_info增删改后触发，更新item_list和item_category的数量值
-            'update_item_total_free': '''
-                CREATE TRIGGER update_item_total_free
-                AFTER INSERT ON item_info
-                FOR EACH ROW
-                BEGIN
-                    UPDATE item_list
-                    SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
-                        free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1),
-                        broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
-                    WHERE id = NEW.father;
+def init_trigger(database : Database):
+    triggers = {
+        # 当表item_info增删改后触发，更新item_list和item_category的数量值
+        'update_item_total_free': '''
+            CREATE TRIGGER update_item_total_free
+            AFTER INSERT ON item_info
+            FOR EACH ROW
+            BEGIN
+                UPDATE item_list
+                SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
+                    free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1),
+                    broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
+                WHERE id = NEW.father;
 
-                    UPDATE item_category
-                    SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = NEW.father))
-                    WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
-                END;
-            ''',
-            'update_item_total_free_on_delete': '''
-                CREATE TRIGGER update_item_total_free_on_delete
-                AFTER DELETE ON item_info
-                FOR EACH ROW
-                BEGIN
-                    UPDATE item_list
-                    SET total = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father),
-                        free = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 1),
-                        broken = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 3)
-                    WHERE id = OLD.father;
+                UPDATE item_category
+                SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = NEW.father))
+                WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
+            END;
+        ''',
+        'update_item_total_free_on_delete': '''
+            CREATE TRIGGER update_item_total_free_on_delete
+            AFTER DELETE ON item_info
+            FOR EACH ROW
+            BEGIN
+                UPDATE item_list
+                SET total = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father),
+                    free = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 1),
+                    broken = (SELECT COUNT(*) FROM item_info WHERE father = OLD.father AND useable = 3)
+                WHERE id = OLD.father;
 
-                    UPDATE item_category
-                    SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = OLD.father))
-                    WHERE id = (SELECT father FROM item_list WHERE id = OLD.father);
-                END;
-            ''',
-            'update_item_total_free_after_update': '''
-                CREATE TRIGGER update_item_total_free_after_update
-                AFTER UPDATE ON item_info
-                FOR EACH ROW
-                BEGIN
-                    UPDATE item_list
-                    SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
-                        free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1),
-                        broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
-                    WHERE id = NEW.father;
+                UPDATE item_category
+                SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = OLD.father))
+                WHERE id = (SELECT father FROM item_list WHERE id = OLD.father);
+            END;
+        ''',
+        'update_item_total_free_after_update': '''
+            CREATE TRIGGER update_item_total_free_after_update
+            AFTER UPDATE ON item_info
+            FOR EACH ROW
+            BEGIN
+                UPDATE item_list
+                SET total = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father),
+                    free = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 1),
+                    broken = (SELECT COUNT(*) FROM item_info WHERE father = NEW.father AND useable = 3)
+                WHERE id = NEW.father;
 
-                    UPDATE item_category
-                    SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = NEW.father))
-                    WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
-                END;
-            '''
-        }
-        for trigger_name, create_sql in triggers.items():
-            if not super().is_trigger_exists(trigger_name):
-                with super().get_connection(self.db).cursor() as cursor:
-                    cursor.execute(create_sql)
-                    logger.info(f"Trigger {trigger_name} created.")
-        
+                UPDATE item_category
+                SET total = (SELECT IFNULL(SUM(total), 0) FROM item_list WHERE father = (SELECT father FROM item_list WHERE id = NEW.father))
+                WHERE id = (SELECT father FROM item_list WHERE id = NEW.father);
+            END;
+        '''
+    }
+    conn = database.get_connection()
+    sync_triggers(conn.cursor(), triggers)

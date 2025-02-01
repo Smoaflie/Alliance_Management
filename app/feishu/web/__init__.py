@@ -4,12 +4,12 @@ import time
 import hashlib
 import requests
 from .auth import Auth
+from ..config import FEISHU_CONFIG as _fs
 from flask import Blueprint
 from flask import request, jsonify, render_template
-from app.feishu.config import APP_ID, APP_SECRET, FEISHU_HOST
 # const
 # 随机字符串，用于签名生成加密使用
-NONCE_STR = "14oEviLbrTo458A3NjrOwS70oTOXVOAm"
+NONCE_STR = "17oEviLbrTo458A3NjrOwS70oTOXVOAm"
 # 初始化 flask 蓝图
 web_bp = Blueprint("feishu_web", __name__, 
                    static_url_path="/public", 
@@ -26,7 +26,7 @@ web_bp = Blueprint("feishu_web", __name__,
 #     return response
 
 # 用获取的环境变量初始化Auth类，由APP ID和APP SECRET获取access token，进而获取jsapi_ticket
-auth = Auth(FEISHU_HOST, APP_ID, APP_SECRET)
+auth = Auth(_fs.LARK_HOST, _fs.APP_ID, _fs.APP_SECRET)
 
 # 默认的主页路径
 @web_bp.route("/", methods=["GET"])

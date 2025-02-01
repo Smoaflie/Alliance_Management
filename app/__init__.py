@@ -3,7 +3,7 @@ import __main__
 
 from flask import Flask
 
-from app.ext.database import Database
+from app.ext.database import Database,init_database
 from app.ext.redis import init_redis
 from scripts.utils import get_project_root
 from scripts.utils import load_file
@@ -23,7 +23,7 @@ app.config['redis_client'] = init_redis(app.config.get('redis'))
 
 def init_app(app):
     # 初始化database
-    app.config["database"].init_database()
+    init_database(app.config["database"])
     # 初始化子模块
     init_projects(app)
     # 注册蓝图

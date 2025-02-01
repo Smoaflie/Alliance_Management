@@ -5,37 +5,37 @@ import copy
 import time
 from datetime import datetime
 
-from app.ext.celery import celery
+from ..config import database
+from ..config import FEISHU_CONFIG as _fs
 from app.decorators import celery_task
-from app.feishu.config import database
-from app.feishu.config import (
-    ITEM_SHEET_TOKEN,
-    SHEET_ID_ITEM,
-    APPROVAL_CODE,
-    CARD_DISPLAY_JSON,
-    CARD_DISPLAY_REPEAT_ELEMENTS_JSON,
-    BUTTON_CONFIRM_JSON,
-    FORM_JSON,
-    message_api_client,
-    spreadsheet_api_client,
-    approval_api_event,
-    LarkException
-)
+from scripts.api.feishu import LarkException
 from scripts.utils import (
     can_convert_to_int,
     format_with_margin,
-    load_file,
     replace_placeholders,
-    safe_get
+    safe_get,
+    load_file
 )
 
 logger = logging.getLogger(__name__)
+
+# 消息卡片数据
+card_json = load_file("message_card.json")
+CARD_DISPLAY_JSON = card_json.get('display')
+CARD_DISPLAY_REPEAT_ELEMENTS_JSON = card_json.get('display_repeat_elements')
+BUTTON_CONFIRM_JSON = card_json.get('button_confirm')
+FORM_JSON = card_json.get('form')
+# 云文档参数
+ITEM_SHEET_TOKEN = _fs.sheet.token
+SHEET_ID_ITEM = _fs.sheet.sheet_id_ITEM
+# 审批参数
+APPROVAL_CODE = _fs.approval.approval_code
 
 '''
 private function
 '''
 @celery_task
-def _update_message_card(
+def update_message_card(
     token: str, 
     object_id: int | None = None, 
     user_id: str | None = None, 
@@ -45,11 +45,11 @@ def _update_message_card(
     """
     更新消息卡片
     """
-    data = _create_message_card_date(object_id, user_id, 
+    data = create_message_card_date(object_id, user_id, 
                                       target, selectedObjectList)
     if data:
         logger.info("更新卡片token: %s" % token)
-        message_api_client.delay_update_message_card(token, data)
+        _fs.api.message.delay_update_message_card(token, data)
 
 @celery_task
 def send_a_new_message_card(user_id: str, content: dict):
@@ -63,9 +63,9 @@ def send_a_new_message_card(user_id: str, content: dict):
         if alive_card_id:
             logger.info("撤回与 %s 的消息卡片 %s" % (user_id,alive_card_id))
             database.update_card(user_id)
-            message_api_client.recall(alive_card_id)
+            _fs.api.message.recall(alive_card_id)
 
-        result = message_api_client.send_interactive_with_user_id(user_id, content)
+        result = _fs.api.message.send_interactive_with_user_id(user_id, content)
         message_id = safe_get(result,'data','message_id')
         create_time = safe_get(result,'data','create_time')
         logger.info("向 %s 发送新消息卡片 %s" % (user_id,message_id))
@@ -73,7 +73,7 @@ def send_a_new_message_card(user_id: str, content: dict):
     except LarkException as e:
         logger.error("发送消息失败: %s" % e)
 
-def _create_message_card_date(
+def create_message_card_date(
         object_id: int, 
         user_id: str | None = None, 
         target: str | None = None, 
@@ -251,7 +251,7 @@ def create_approval_about_apply_items(
          'value':ujson.dumps(selectedObjectList,indent=2,ensure_ascii=False)}
     ]
 
-    approval_api_event.create_instance(approval_code=APPROVAL_CODE, 
+    _fs.api.approval.create_instance(approval_code=APPROVAL_CODE, 
                                        user_id=user_id, form=ujson.dumps(form))
     logger.info("发送审批,%s 申请 {selectedObjectList['oid']}" % user_id)
 
@@ -341,7 +341,7 @@ def create_command_message_response(
                     else:
                         reply_text = reply_map['permission_denied']
     if reply_text not in ('', None) :
-        message_api_client.send_text_with_user_id(user_id,reply_text)
+        _fs.api.message.send_text_with_user_id(user_id,reply_text)
         logger.info('向 %s 发送消息 %s' % (user_id,reply_text))
 
 def _command_add_object(reply_map, message, sender_id, object, params):
@@ -468,7 +468,7 @@ def _command_search_id(reply_map, message, sender_id, object, params):
     #TODO:异常处理
     try:
         user_id = sender_id['user_id']
-        content = _create_message_card_date(object_id=int(object))
+        content = create_message_card_date(object_id=int(object))
         send_a_new_message_card(user_id, content)
     
         return None
@@ -499,7 +499,7 @@ def _command_save(reply_map, message, sender_id, object, params):
     """
     try:
         #先删除旧记录
-        spreadsheet_api_client.delete_rows_or_columns(
+        _fs.api.spreadsheet.delete_rows_or_columns(
             ITEM_SHEET_TOKEN,SHEET_ID_ITEM,"COLUMNS",1,6)
         #批量保存
         start_line = end_line= 2
@@ -529,7 +529,7 @@ def _command_save(reply_map, message, sender_id, object, params):
                     value.append(do)
                     value.append(purpose)
                     values.append(value)
-            spreadsheet_api_client.write_date_to_a_single_range(
+            _fs.api.spreadsheet.write_date_to_a_single_range(
                 ITEM_SHEET_TOKEN,SHEET_ID_ITEM,f"A{start_line}:G{end_line-1}",values)
             logger.info(
                 "已保存 %s 类型的信息到电子表格中，行数%d:%d" %
@@ -545,7 +545,7 @@ def _command_load(reply_map, message, sender_id, object, params):
     (指令)从设定的电子表格中读取物资(详细)信息存储当前数据库中.
     """
     try:
-        sheet_date =  spreadsheet_api_client.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:G")
+        sheet_date =  _fs.api.spreadsheet.reading_a_single_range(ITEM_SHEET_TOKEN, SHEET_ID_ITEM, "A2:G")
         items_info = sheet_date['data']['valueRange']['values']
         database.del_all()
         for item_info in items_info:
