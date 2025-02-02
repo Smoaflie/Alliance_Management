@@ -900,8 +900,8 @@ def init_tables(database : Database):
         },
         "members": {
             "columns": [
-                ("user_id", "text", "NOT NULL"),
-                ("open_id", "text", "NOT NULL"),
+                ("user_id", "text", ""),
+                ("open_id", "text", ""),
                 ("name", "text", "NOT NULL"),
                 ("root", "int(1)", "NOT NULL DEFAULT 0"),
                 ("card_message_id", "text", ""),
@@ -989,3 +989,4 @@ def init_trigger(database : Database):
     }
     conn = database.get_connection()
     sync_triggers(conn.cursor(), triggers)
+    conn.commit()

@@ -1,5 +1,6 @@
 import logging
 import pymysql
+import re
 from functools import wraps
 from dbutils.pooled_db import PooledDB
 
@@ -290,7 +291,6 @@ def sync_table(cursor, table_name, column_defs, foreign_keys=None, table_options
         return
 
     # 表存在，进行同步操作
-
     # 获取现有列信息
     cursor.execute(f"""
         SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA 
@@ -303,7 +303,6 @@ def sync_table(cursor, table_name, column_defs, foreign_keys=None, table_options
         "default": row[3],
         "extra": row[4].lower()
     } for row in cursor.fetchall()}
-
     # 获取现有主键
     cursor.execute(f"""
         SELECT COLUMN_NAME 
@@ -336,12 +335,28 @@ def sync_table(cursor, table_name, column_defs, foreign_keys=None, table_options
 
         # 对比现有列属性
         current = existing_columns[col_name]
+        # 对extra字段进行相应判断
         # 判断 NOT NULL 状态：若定义中含有 "NOT NULL"，则 target_nullable 为 False
-        target_nullable = "NOT NULL" in col_extra.upper()
-        type_mismatch = current["type"] != col_type.lower()
+        # 另外，在 MySQL 中，AUTO_INCREMENT 列必须是 NOT NULL
+        target_nullable = "NOT NULL" not in col_extra.upper() and "AUTO_INCREMENT" not in col_extra.upper()
+        match_extra = clean_extra.replace("NOT NULL", "").strip()
+        # 正则匹配 TYPE 值(忽略括号)
+        target_type = re.sub(r"\(\S+\)", "", col_type).lower()
+        # 正则匹配 DEFAULT 值（数字或字符串）
+        pattern = r"\bDEFAULT\s+(\S+)"
+        # 提取 DEFAULT 值 
+        match = re.search(pattern, match_extra)
+        target_default = match.group(1) if match and match.group(1) != 'NULL' else None
+        # 删除 DEFAULT 部分
+        match_extra = re.sub(pattern, "", match_extra)
+
+        # 比较列属性
+        type_mismatch = current["type"] != target_type
         nullable_mismatch = current["nullable"] != target_nullable
-        extra_mismatch = current["extra"] != clean_extra.lower()
-        if type_mismatch or nullable_mismatch or extra_mismatch:
+        default_mismatch = current["default"] != target_default
+        extra_mismatch = current["extra"] != match_extra.lower()
+        
+        if type_mismatch or nullable_mismatch or default_mismatch or extra_mismatch:
             alter_queries.append(
                 f"ALTER TABLE `{table_name}` MODIFY COLUMN `{col_name}` {col_type} {clean_extra}".strip()
             )
