@@ -2,6 +2,7 @@ import hashlib
 import logging
 from scripts.api.feishu import LarkException
 from ..config import FEISHU_CONFIG as _fs,database,redis_client
+from .projects_group import traverse_threads_and_create_inventories
 logger = logging.getLogger(__name__)
 def update_members():
     """更新成员列表.
@@ -35,7 +36,9 @@ def update_members():
             for item in items:
                 user_list.append({
                     'name':item['name'],
-                    'user_id':item['user_id']
+                    'user_id':item['user_id'],
+                    'union_id':item['union_id'],
+                    'open_id':item['open_id']
                 })
             database.add_member_batch(user_list)
             database.update_contact_md5(MD5remote)

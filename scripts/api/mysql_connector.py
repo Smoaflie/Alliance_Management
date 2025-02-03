@@ -440,7 +440,6 @@ def sync_table(cursor, table_name, column_defs, foreign_keys=None, table_options
         except Exception as err:
             logger.error(f"执行 SQL 失败: {query}\n错误信息: {err}")
     logger.info(f"同步表 {table_name} 成功")
-    
 
 def sync_triggers(cursor, triggers):
     """

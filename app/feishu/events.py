@@ -4,17 +4,18 @@ import logging
 from flask import jsonify,request,Blueprint
 from requests import HTTPError
 
-from app.decorators import rate_limit
-from app.feishu.config import database
-from app.feishu.config import redis_client
-from app.feishu.config import FEISHU_CONFIG as _fs
-from app.feishu.commands.application import (
+from .config import database
+from .config import redis_client
+from .config import FEISHU_CONFIG as _fs
+from .commands.application import (
     create_command_message_response,
     create_message_card_date,
     send_a_new_message_card,
     update_message_card,
     create_approval_about_apply_items
 )
+from .commands.projects_group import new_thread_in_project_group_callback
+from app.decorators import rate_limit
 from scripts.utils import (
     obj_2_dict,
     DEBUG_OUT,
@@ -49,6 +50,9 @@ logger = FeishuLogger()
 
 # 审批参数
 APPROVAL_CODE = _fs.approval.approval_code
+# 项目话题群ID
+PROJECT_CHAT_ID = _fs.projects_management.chat_id
+
 '''
 Flask app function
 '''
@@ -111,13 +115,15 @@ def message_receive_event_handler(req_data: MessageReceiveEvent):
     message = obj_2_dict(req_data.event.message)
     chat_id = req_data.event.message.chat_id
     chat_type = req_data.event.message.chat_type
+    message_type = req_data.event.message.message_type
     logger.info("chat_id:%s,\n\tsender_user_id:%s, chat_type:%s,message:\n\t%s" % (chat_id, chat_type, sender_user_id, message))
     if chat_type == "p2p":
         sender_id = obj_2_dict(req_data.event.sender.sender_id)
         create_command_message_response(user_id=sender_user_id,message=message,sender_id=sender_id)
     elif chat_type == "group":
-        thread_id = req_data.event.message.thread_id
-        pass
+        if chat_id == PROJECT_CHAT_ID:
+            if message_type == 'post':
+                new_thread_in_project_group_callback(message)
     return jsonify()
 
 @event_manager.register("im.message.recalled_v1")

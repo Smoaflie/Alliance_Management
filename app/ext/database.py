@@ -346,7 +346,7 @@ class Database(MySql) :
             if not super().fetchone('members', 'user_id', user['user_id']):
                 super().insert('members', user)
 
-    def get_member(self, user_id: str) -> dict[str, list]:
+    def get_member(self, user_id: str | None = None, open_id:str | None = None) -> dict[str, list]:
         """"
         获取用户信息
 
@@ -360,7 +360,10 @@ class Database(MySql) :
         raise:
             ValueError: 无法找到目标用户时抛出
         """
-        member = super().fetchone('members', 'user_id', user_id)
+        if user_id:
+            member = super().fetchone('members', 'user_id', user_id)
+        elif open_id:
+            member = super().fetchone('members', 'open_id', open_id)
         if member:
             return {
                 'user_id': member[0],
@@ -902,23 +905,11 @@ def init_tables(database : Database):
             "columns": [
                 ("user_id", "text", ""),
                 ("open_id", "text", ""),
+                ("union_id", "text", ""),
                 ("name", "text", "NOT NULL"),
                 ("root", "int(1)", "NOT NULL DEFAULT 0"),
                 ("card_message_id", "text", ""),
                 ("card_message_create_time", "text", "")
-            ],
-            "foreign_keys": None,
-            "options": "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-        },
-        "projects": {
-            "columns": [
-                ("creator", "text", "NOT NULL"),
-                ("creator_open_id", "text", "NOT NULL"),
-                ("thread_id", "text", "NOT NULL"),
-                ("message_id", "text", "NOT NULL"),
-                ("create_time", "text", "NOT NULL"),
-                ("update_time", "text", "NOT NULL"),
-                ("deleted", "int(1)", "NOT NULL DEFAULT 0")
             ],
             "foreign_keys": None,
             "options": "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"

@@ -16,7 +16,7 @@ log_file_path = os.path.join(logs_dir, 'app.log')
 # 配置日志记录器
 logging.basicConfig(
     level=logging.INFO,  # 设置最低日志级别
-    format='%(asctime)s [%(levelname)s] %(message)s',  # 日志格式
+    format="%(asctime)s %(name)s [%(levelname)s] %(message)s",  # 日志格式
     handlers=[
         logging.FileHandler(log_file_path, encoding='utf-8'),  # 文件输出（保存到 .logs 文件中）
         logging.StreamHandler()  # 控制台输出
@@ -26,10 +26,11 @@ logging.basicConfig(
 
 
 if __name__ == "__main__":
+    logging.info("正在启动服务端...")
     init_app(app)
     from flask import url_for
     with app.app_context():
-        print(app.url_map)
+        logging.info("服务端启动成功 - url_map:\n" + str(app.url_map))
         # print(url_for('feishu.feishu_web.get_home'))
     app.run(debug=True)
     
