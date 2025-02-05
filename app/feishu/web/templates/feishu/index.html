@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>个人管理后台</title>
+    <link rel="stylesheet" href="./public/index.css" />
+    <script src="https://cdn.staticfile.org/jquery/1.10.2/jquery.min.js"></script>
+    <!-- 引入 JSSDK -->
+    <!-- JS 文件版本在升级功能时地址会变化，如有需要（比如使用新增的 API），请重新引用「网页应用开发指南」中的JSSDK链接，确保你当前使用的JSSDK版本是最新的。-->
+    <script
+      type="text/javascript"
+      src="https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.16.js"
+    ></script>
+    <!-- 在页面上添加VConsole方便调试-->
+    <script src="https://unpkg.com/vconsole/dist/vconsole.min.js"></script>
+    <script>
+      var vConsole = new window.VConsole();
+    </script>
+    
+  </head>
+  
+  <body>
+    <div class="container">
+      <div class="center-x">~</div>
+      <div class="img right" id="avatar"></div>
+      <div class="img left"><img src="./public/svg/logo.svg" /></div>
+      <div class="loader"></div>
+      <div id="hello-text" class="hello-text hidden"></div>
+      <div id="menu" class="menu hidden">
+        <button-3d class="menu-button" onclick="showItemManager()" data-title="物资管理"></button-3d>
+        <button-3d class="menu-button" onclick="inputCookie()" data-title="填写课表"></button-3d>
+      </div>
+      <!-- 遮罩层 -->
+      <div class="overlay"></div>
+
+      <!-- 子页面 -->
+      <div id="itemManager" class="popup">
+          <button class="close-btn">X</button>
+          <h2>物资管理</h2>
+          <p>这里是弹出的子页面，可以放任何内容。</p>
+          <form>
+            <input type="number" name="itemId"><br>
+            <input type="submit" value="查询">
+          </form>
+          <button-3d data-title="扫码"></button-3d>
+      </div>
+
+    </div>
+    <script src="./public/index.js"></script>
+    <!-- 第三方拓展 -->
+    <link rel="stylesheet" href="./public/thirdly/button-3d.css" />
+    <script src="./public/thirdly/button-3d.js"></script>
+
+    <script>
+      const overlay = document.querySelector(".overlay");
+      document.querySelectorAll(".popup").forEach((popup) => {
+        const closeBtn = popup.querySelector(".close-btn");
+        // 关闭子页面
+        closeBtn.addEventListener("click", () => {
+            popup.classList.remove("show");
+            overlay.classList.remove("show");
+        });
+
+        // 点击遮罩层也关闭
+        overlay.addEventListener("click", () => {
+            popup.classList.remove("show");
+            overlay.classList.remove("show");
+        });
+      });
+      function showItemManager() {
+        overlay.classList.add("show");
+        $("#itemManager").addClass("show");
+      }
+
+  </script>
+  </body>
+</html>

@@ -1,12 +1,15 @@
 import ujson
 import sys
 import os
+
 """
 该文件存储了一些工具类函数
 """
 
+
 class Obj(dict):
     """自定义对象类,用于将字典转换成对象"""
+
     def __init__(self, d):
         for a, b in d.items():
             if isinstance(b, (list, tuple)):
@@ -14,8 +17,10 @@ class Obj(dict):
             else:
                 setattr(self, a, Obj(b) if isinstance(b, dict) else b)
 
+
 def dict_2_obj(d: dict):
     return Obj(d)
+
 
 def obj_2_dict(o: Obj) -> dict:
     r = {}
@@ -28,10 +33,13 @@ def obj_2_dict(o: Obj) -> dict:
             r[a] = obj_2_dict(b)
     return r
 
-def DEBUG_OUT(data=None, json=None, file='request.json'):
+
+def DEBUG_OUT(data=None, json=None, file="request.json"):
     """调试时输出数据到文件中."""
-    with open(file, 'w') as f:
-        json_str = ujson.dumps(data, indent=4, ensure_ascii=False) if data else json # 格式化写入 JSON 文件
+    with open(file, "w", encoding="utf-8") as f:
+        json_str = (
+            ujson.dumps(data, indent=4, ensure_ascii=False) if data else json
+        )  # 格式化写入 JSON 文件
         f.write(json_str)
 
 
@@ -40,34 +48,45 @@ def get_display_width(s):
     full_width = 0
     half_width = 0
     for char in s:
-        if ord(char) > 255 or char == '\u3000':  # 中文字符and全角空格
+        if ord(char) > 255 or char == "\u3000":  # 中文字符and全角空格
             full_width += 1
         else:  # 英文字符和数字
             half_width += 1
     return full_width, half_width
 
+
 def format_with_margin(s, margin, assign_full_width_num=None):
     """根据给定的宽度格式化字符串"""
     s = str(s)
     full_width, half_width = get_display_width(s)
-    if full_width*2+half_width >= margin:
+    if full_width * 2 + half_width >= margin:
         return s  # 如果字符串已经超过了margin，返回原字符串
-    
+
     if not assign_full_width_num:
         full_width_num = 0
-        half_width_num = margin - (full_width*2+half_width)
+        half_width_num = margin - (full_width * 2 + half_width)
     else:
-        full_width_num = assign_full_width_num - full_width if assign_full_width_num>full_width else 0
-        half_width_num = margin-((full_width_num+full_width)*2+half_width) if margin>(full_width_num+full_width)*2+half_width else 0
+        full_width_num = (
+            assign_full_width_num - full_width
+            if assign_full_width_num > full_width
+            else 0
+        )
+        half_width_num = (
+            margin - ((full_width_num + full_width) * 2 + half_width)
+            if margin > (full_width_num + full_width) * 2 + half_width
+            else 0
+        )
     # 使用全角空格+数样间距 (figure space)填充
-    return s + '\u3000' * full_width_num + "\u2007" * half_width_num
+    return s + "\u3000" * full_width_num + "\u2007" * half_width_num
+
 
 def is_valid(sstr, errors):
     """判断字符串是否合法"""
-    voidc = ["'", '"', '\\', '<', '>', '(', ')', '.', '=']
+    voidc = ["'", '"', "\\", "<", ">", "(", ")", ".", "="]
     for ccc in voidc:
         if ccc in str(sstr):
             errors.append(f'parameters error:\n"{sstr}" is not valid')
+
 
 def can_convert_to_int(a):
     """判断变量能否转变成int类型"""
@@ -76,6 +95,7 @@ def can_convert_to_int(a):
         return True
     except (ValueError, TypeError):
         return False
+
 
 def replace_placeholders(data, values):
     """
@@ -92,6 +112,7 @@ def replace_placeholders(data, values):
             data = data.replace(f"${{{key}}}", str(value))
     return data
 
+
 def load_file(file_path):
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -103,19 +124,25 @@ def load_file(file_path):
     except Exception as e:
         raise RuntimeError(f"Unexpected error occurred while reading {file_path}: {e}")
 
+
 def get_project_root():
     """
     获取当前工程目录的根路径，通过递归查找特定标志文件或文件夹。
     """
     current_path = os.path.abspath(os.path.dirname(__file__))
     while current_path:
-        if any(os.path.exists(os.path.join(current_path, marker)) for marker in ['main.py']):
+        if any(
+            os.path.exists(os.path.join(current_path, marker)) for marker in ["main.py"]
+        ):
             return current_path
         parent_path = os.path.dirname(current_path)
         if parent_path == current_path:  # 已经到根目录
             break
         current_path = parent_path
-    raise RuntimeError("无法找到工程根目录，请确保有标志文件（如 requirements.txt 或 .git）")
+    raise RuntimeError(
+        "无法找到工程根目录，请确保有标志文件（如 requirements.txt 或 .git）"
+    )
+
 
 def safe_get(data, *keys, default=None):
     """安全地从嵌套字典和列表中获取值"""

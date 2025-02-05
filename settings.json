@@ -17,8 +17,12 @@
             "chat_id":"oc_e373c228a55f34a70af85dce94d96e23"
         },
         "admin_config": {
-            "user_id_list":["f1549d18"],
+            "user_id_list":[],
             "chat_id":"oc_4bfd67153f753eaba0cd6f447f0568a5"
+        },
+        "class_schedule": {
+            "sheet_token": "LTsWsijgThBo4BtEG5ncSyoLnse",
+            "sheet_id": "3f28b9"
         }
     },
     "mysql": {

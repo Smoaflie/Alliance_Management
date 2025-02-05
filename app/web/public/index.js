@@ -1,6 +1,5 @@
 let lang = window.navigator.language;
-let userInfo = {}
-let auth_config = {}
+
 $("document").ready(apiAuth());
 
 function apiAuth() {
@@ -18,7 +17,6 @@ function apiAuth() {
   fetch(`./get_config_parameters?url=${url}`)
     .then((response) =>
       response.json().then((res) => {
-        auth_config = res;
         console.log(
           "接入方服务端返回给接入方前端的结果(前端调用config接口的所需参数):", res
         );
@@ -28,10 +26,10 @@ function apiAuth() {
         });
         // 调用config接口进行鉴权
         window.h5sdk.config({
-          appId: auth_config.appid,
-          timestamp: auth_config.timestamp,
-          nonceStr: auth_config.noncestr,
-          signature: auth_config.signature,
+          appId: res.appid,
+          timestamp: res.timestamp,
+          nonceStr: res.noncestr,
+          signature: res.signature,
           jsApiList: [],
           //鉴权成功回调
           onSuccess: (res) => {
@@ -51,8 +49,7 @@ function apiAuth() {
             success(res) {
               console.log(`getUserInfo success: ${JSON.stringify(res)}`);
               // 单独定义的函数showUser，用于将用户信息展示在前端页面上
-              showMenu(res.userInfo);
-              userInfo = res.userInfo;
+              showUser(res.userInfo);
             },
             // getUserInfo API 调用失败回调
             fail(err) {
@@ -82,70 +79,20 @@ function apiAuth() {
     });
 }
 
-function getTimePeriod() {
-  const hour = new Date().getHours(); // 获取当前小时
-
-  if (hour >= 5 && hour < 12) {
-    return "早上好"; // 5:00 - 11:59
-  } else if (hour >= 17 && hour < 23) {
-    return "傍晚好"; // 17:00 - 19:59
-  } else if (hour >= 0 && hour < 5 || hour >= 23) {
-    return "深夜好"; // 23:00 - 4:59
-  } else {
-    return "下午好"; // 12:00 - 16:59
-  }
-}
-
-function showMenu(res) {
+function showUser(res) {
   // 展示用户信息
-  $(".loader").addClass("hidden");  // 让加载动画淡出
-  setTimeout(() => {
-    $(".loader").hide();  // 确保动画结束后隐藏
-    $("#avatar").html(
-      `<img src="${res.avatarUrl}" width="100%" height=""100%/>`
-    );
-    $("#hello-text").text(getTimePeriod() + ", " + res.nickName); // 让文字渐显
-    $("#hello-text").removeClass("hidden");
-    $("#menu").removeClass("hidden");
-    $('.container').addClass('is-loaded');
-  }, 1000); // 等待1秒（与 CSS 过渡时间一致）
-}
-
-function inputCookie() {
-  tt.showPrompt({
-    "title": "请键入教务处课表页cookie值",
-    "placeholder": "示例格式:16FDF21114251A4BBF40F5AEE70XXXXX",
-    "maxLength": 50,
-    "confirmText": "确定",
-    "cancelText": "取消",
-    success(res) {
-      console.log(JSON.stringify(res));
-      if (res.confirm) {
-        fetch(`./class_schedule?cookie=${res.inputValue}&userName=${userInfo.nickName}`,{method:"POST"})
-        .then(response => {
-          console.log(response)
-          if (!response.ok) {  // 处理 400、500 等错误
-            throw new Error(`HTTP error! Status: ${response.status}`);
-          }
-          response.json()})
-        .then(data => {
-          console.log('Success:', data);
-          tt.showToast({
-            title: "更新成功",
-            icon: "success",
-            duration: 3000,
-          });})
-        .catch(error => {
-          console.error('Error:', error);
-          tt.showToast({
-            title: "更新失败，请检查cookie",
-            icon: "error",
-            duration: 3000,
-          });});
-      }
-    },
-    fail(res) {
-      console.log(`showPrompt fail: ${JSON.stringify(res)}`);
-    }
-  });
+  // 头像
+  $("#img_div").html(
+    `<img src="${res.avatarUrl}" width="100%" height=""100%/>`
+  );
+  // 名称
+  $("#hello_text_name").text(
+    lang === "zh_CN" || lang === "zh-CN"
+      ? `${res.nickName}`
+      : `${res.i18nName.en_us}`
+  );
+  // 欢迎语
+  $("#hello_text_welcome").text(
+    lang === "zh_CN" || lang === "zh-CN" ? "好哎！上班！" : "Work! Work!"
+  );
 }
