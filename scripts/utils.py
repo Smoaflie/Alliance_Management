@@ -125,14 +125,14 @@ def load_file(file_path):
         raise RuntimeError(f"Unexpected error occurred while reading {file_path}: {e}")
 
 
-def get_project_root():
+def get_project_root(feature_file="main.py"):
     """
     获取当前工程目录的根路径，通过递归查找特定标志文件或文件夹。
     """
     current_path = os.path.abspath(os.path.dirname(__file__))
     while current_path:
         if any(
-            os.path.exists(os.path.join(current_path, marker)) for marker in ["main.py"]
+            os.path.exists(os.path.join(current_path, marker)) for marker in [feature_file]
         ):
             return current_path
         parent_path = os.path.dirname(current_path)

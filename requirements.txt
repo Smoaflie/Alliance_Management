@@ -10,3 +10,4 @@ Werkzeug<3
 pymysql
 DBUtils
 cryptography
+beautifulsoup4

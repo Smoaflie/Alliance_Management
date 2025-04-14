@@ -367,8 +367,10 @@ class Database(MySql) :
         if member:
             return {
                 'user_id': member[0],
-                'name': member[1],
-                'root': member[2]
+                'open_id': member[1],
+                'union_id': member[2],
+                'name': member[3],
+                'root': member[4]
             }
         else:
             raise ValueError(f"无法找到目标用户 user_id:{user_id}")
@@ -762,7 +764,7 @@ class Database(MySql) :
         else:
             self.set_item_state(operater_user_id=user_id,operation='RETURN',
                                 oid=oid,useable=1,wis='仓库',do='null')
-            return f'你{"帮忙" if member['root'] else ""}归还了物品 {item_info['name'][0]} oid:{oid}'
+            return f'你{"帮忙" if member["root"] else ""}归还了物品 {item_info["name"][0]} oid:{oid}'
 
     def update_card(
         self, 

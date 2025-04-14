@@ -285,7 +285,8 @@ def sync_table(cursor, table_name, column_defs, foreign_keys=None, table_options
                     f"ON DELETE {fk.get('on_delete', 'NO ACTION')}"
                 )
                 columns.append(fk_sql)
-        create_sql = f"CREATE TABLE `{table_name}` (\n  {',\n  '.join(columns)}\n) {table_options}"
+        columns_format = ',\n  '.join(columns)
+        create_sql = f"CREATE TABLE {table_name} (\n  {columns_format}\n) {table_options}"
         cursor.execute(create_sql)
         logger.info(f"新增表 {table_name} 成功")
         return
