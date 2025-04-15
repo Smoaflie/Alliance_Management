@@ -9,12 +9,14 @@ def init_project_feishu(feishu_config):
         update_members,
         sub_approval_event,
         traverse_threads_and_create_inventories,
+        check_bitables,
     )
 
     # 执行初始化流程
     update_members()
     sub_approval_event()
     traverse_threads_and_create_inventories()
+    check_bitables()
 
     test_func()
     # 注册蓝图
@@ -30,5 +32,5 @@ def test_func():
     from .config import FEISHU_CONFIG as _fs
     from scripts.utils import DEBUG_OUT
     from .commands.projects_group import delete_all_inventories
-
+    import os
     # delete_all_inventories()

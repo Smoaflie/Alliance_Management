@@ -7,3 +7,4 @@ request.json
 setting.json
 .logs/
 test.*
+cache

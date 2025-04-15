@@ -23,16 +23,21 @@ app.config.update(config_data)
 
 
 def init_app(app):
-    # 初始化database
-    init_database(app.config["database"])
+    # 初始化第三方组件
+    init_third_party(app.config)
     # 初始化子模块
-    init_projects(app)
+    init_submodules(app)
     # 注册蓝图
     register_blueprints(app)
 
 
+# 初始化第三方组件
+def init_third_party(config):
+    if config.get("database"):
+        init_database(config["database"])
+
 # 初始化子模块
-def init_projects(app):
+def init_submodules(app):
     from app.feishu import init_project_feishu
 
     init_project_feishu(app.config.get("feishu"))

@@ -48,11 +48,8 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     logger.info("正在启动服务端...")
 
-    logger_2 = logging.getLogger("aaa")
-    logger_2.info("aaa")
-    # init_app(app)
-    # from flask import url_for
-    # with app.app_context():
-    #     logging.info("服务端启动成功 - url_map:\n" + str(app.url_map))
-        # print(url_for('feishu.feishu_web.get_home'))
+    init_app(app)
+    from flask import url_for
+    with app.app_context():
+        logging.info("服务端启动成功 - url_map:\n" + str(app.url_map))
     app.run(debug=True, port=3000)

@@ -4,6 +4,7 @@ from scripts.api.feishu import LarkException
 from ..config import FEISHU_CONFIG as _fs,database,redis_client
 from .projects_group import traverse_threads_and_create_inventories
 logger = logging.getLogger(__name__)
+
 def update_members():
     """更新成员列表.
     使用`获取通讯录授权范围`api获取用户列表    
@@ -11,6 +12,9 @@ def update_members():
         或者 加点代码递归搜索组织下各部门的用户列表
     """
     try:
+        # 前提：存在数据库
+        if not database:
+            logger.info("Cannot connect to databse, skip add members from contact.")
         user_ids = []
         page_token = None
         while(True):
@@ -20,31 +24,31 @@ def update_members():
             page_token = result.get('data').get("page_token")
             if not page_token:
                 break
+        
+            #校验md5值，检测是否有变化
+            list_string = ''.join(map(str, user_ids))
+            MD5remote = hashlib.md5()
+            MD5remote.update(list_string.encode('utf-8'))
+            MD5remote = MD5remote.hexdigest()
 
-        #校验md5值，检测是否有变化
-        list_string = ''.join(map(str, user_ids))
-        MD5remote = hashlib.md5()
-        MD5remote.update(list_string.encode('utf-8'))
-        MD5remote = MD5remote.hexdigest()
+            MD5local = database.fetch_contact_md5()
 
-        MD5local = database.fetch_contact_md5()
-
-        if MD5local != MD5remote:
-            resp = _fs.api.contact.get_users_batch(user_ids=user_ids, user_id_type='user_id')
-            items = resp.get('data').get('items')
-            user_list = list()
-            for item in items:
-                user_list.append({
-                    'name':item['name'],
-                    'user_id':item['user_id'],
-                    'union_id':item['union_id'],
-                    'open_id':item['open_id']
-                })
-            database.add_member_batch(user_list)
-            database.update_contact_md5(MD5remote)
-            logger.info("success update members from contact.")
-        else:
-            logger.info("skip add members from contact.")
+            if not MD5local != MD5remote:
+                resp = _fs.api.contact.get_users_batch(user_ids=user_ids, user_id_type='user_id')
+                items = resp.get('data').get('items')
+                user_list = list()
+                for item in items:
+                    user_list.append({
+                        'name':item['name'],
+                        'user_id':item['user_id'],
+                        'union_id':item['union_id'],
+                        'open_id':item['open_id']
+                    })
+                database.add_member_batch(user_list)
+                database.update_contact_md5(MD5remote)
+                logger.info("success update members from contact.")
+            else:
+                logger.info("skip add members from contact.")
     except LarkException as e:
         logger.error("failed to update members from contact: %s" % e)
 
@@ -64,3 +68,10 @@ def sub_approval_event():
             logger.info("已订阅审批定义 %s" % APPROVAL_CODE)
         else:
             logger.error("尝试订阅审批定义 %s 失败: %s" % (APPROVAL_CODE,e))
+
+def check_bitables():
+    # 检查多维表格相关配置
+
+    # 检查 gcode文件优化 表格
+    if hasattr(_fs.bitables, "gcode_optimize"):
+        _fs.api.cloud.subscribe(_fs.bitables.gcode_optimize.file_token, "bitable")

@@ -26,28 +26,29 @@ def celery_task(func):
     return wrapper
 
 def rate_limit(event_type):
-    """用于限制请求频率的装饰器."""
+    """基于redis, 用于限制请求频率的装饰器."""
     def decorator(func):
         def wrapper(*args, **kwargs):
             redis_client = app.config.get('redis_client')
-            user_id = request.json.get('event').get('operator').get('user_id')
-            current_time = time()
+            if redis_client:
+                user_id = request.json.get('event').get('operator').get('user_id')
+                current_time = time()
 
-            # 生成唯一键
-            key = f"{user_id}:{event_type}"
+                # 生成唯一键
+                key = f"{user_id}:{event_type}"
 
-            # 获取当前请求次数
-            request_count = redis_client.zcard(key)
+                # 获取当前请求次数
+                request_count = redis_client.zcard(key)
 
-            # 检查是否超过限制
-            if request_count >= REQUEST_LIMIT:
-                return jsonify({"error": "请求频率过高"}), 403
+                # 检查是否超过限制
+                if request_count >= REQUEST_LIMIT:
+                    return jsonify({"error": "请求频率过高"}), 403
 
-            # 添加当前请求时间
-            redis_client.zadd(key, {current_time: current_time})
+                # 添加当前请求时间
+                redis_client.zadd(key, {current_time: current_time})
 
-            # 设置过期时间，确保在时间窗口结束后自动删除键
-            redis_client.expire(key, TIME_WINDOW)
+                # 设置过期时间，确保在时间窗口结束后自动删除键
+                redis_client.expire(key, TIME_WINDOW)
 
             return func(*args, **kwargs)
         return wrapper

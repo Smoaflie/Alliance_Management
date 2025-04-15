@@ -1,5 +1,7 @@
 import ujson
 import logging
+import os
+import subprocess
 
 from flask import jsonify,request,Blueprint
 from requests import HTTPError
@@ -19,7 +21,8 @@ from app.decorators import rate_limit
 from scripts.utils import (
     obj_2_dict,
     DEBUG_OUT,
-    safe_get
+    safe_get,
+    get_project_root
 )
 from scripts.api.feishu import (
     MessageReceiveEvent,
@@ -27,7 +30,9 @@ from scripts.api.feishu import (
     BotMenuClickEvent,
     CardActionEvent,
     ApprovalInstanceEvent,
-    EventManager
+    BitableRecordInstanceEvent,
+    BitableFieldInstanceEvent,
+    EventManager,
 )
 
 '''
@@ -78,12 +83,14 @@ def callback_event_handler():
         event_id = safe_get(requests,'header','event_id')
         create_time = safe_get(requests,'header','create_time')
         logger.info("fetch event,event_id:%s, timestamp:%s" % (event_id, timestamp))
+        DEBUG_OUT(requests)
         #使用redis监测重复请求
-        if redis_client.exists(event_id): #请求已处理，跳过
-            logger.error("This event has been handled. event_id:%s" % event_id)
-            return jsonify()
-        else:
-            redis_client.set(event_id, create_time, ex=3600)
+        if redis_client:
+            if redis_client.exists(event_id): #请求已处理，跳过
+                logger.error("This event has been handled. event_id:%s" % event_id)
+                return jsonify()
+            else:
+                redis_client.set(event_id, create_time, ex=3600)
     event_handler, event = event_manager.get_handler_with_event(_fs.VERIFICATION_TOKEN, _fs.ENCRYPT_KEY)
     # 运行协程并返回响应
     return event_handler(event)
@@ -290,4 +297,28 @@ def approval_instance_event_handler(req_data: ApprovalInstanceEvent):
                                                 operation=status,useable=0,wis=applicant_name,do=params['do'])
                 logger.info("审批：%s同意对 %s 的申请" % (
                                 operator_user_id, params['objectList']['oid']))
+    return jsonify()
+
+@event_manager.register("drive.file.bitable_record_changed_v1")
+def approval_instance_event_handler(req_data: BitableRecordInstanceEvent):
+    event = req_data.event
+    if hasattr(_fs.bitables, "gcode_optimize"):
+        if event.action_list[0].action == "record_added" \
+            and event.file_token == _fs.bitables.gcode_optimize.file_token \
+            and event.table_id == _fs.bitables.gcode_optimize.table_id:
+            from .commands import bitables
+            uploader_field_id = _fs.bitables.gcode_optimize.uploader_field_id
+            uploader = next(i.field_identity_value.users[0] for i in event.action_list[0].after_value if i.field_id == uploader_field_id)
+            uploader_user_id = uploader.user_id.user_id
+            uploader_name = uploader.name
+            response_str = bitables.gcode_optimize_event_handler(logger, event)
+            _fs.api.message.send_text_with_user_id(
+                user_id=uploader_user_id,
+                content=response_str,
+            )
+    return jsonify()
+
+@event_manager.register("drive.file.bitable_field_changed_v1")
+def approval_instance_event_handler(req_data: BitableFieldInstanceEvent):
+    print("BitableFieldInstanceEvent")
     return jsonify()

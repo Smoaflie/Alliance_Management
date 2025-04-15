@@ -24,6 +24,14 @@
         "class_schedule": {
             "sheet_token": "LTsWsijgThBo4BtEG5ncSyoLnse",
             "sheet_id": "3f28b9"
+        },
+        "bitables": {
+            "gcode_optimize": {
+                "file_token": "OraSbTuXdaYuJ7so6y8cSQdTnlA",
+                "table_id": "tbl4llYurIV7o1hs",
+                "original_file_field_id": "fldxvGNxG3",
+                "uploader_field_id": "fldy6XdgGH"
+            }
         }
     },
     "mysql": {
