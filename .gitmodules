@@ -1,3 +1,6 @@
 [submodule "feishu_api"]
 	path = scripts/api/feishu
 	url = git@github.com:Smoaflie/Feishu_api.git
+[submodule "third_party/BrickLayers"]
+	path = third_party/BrickLayers
+	url = https://github.com/AlrayQiu/BrickLayers.git
