@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import ujson
 from flask import jsonify
 from app.feishu.config import FEISHU_CONFIG as _fs
@@ -38,7 +39,7 @@ def gcode_optimize_event_handler(logger, event):
             logger.info('Download file %s successfully, try to handle.' % file_name)
             
             command = [
-                "python",
+                sys.executable,  # 动态获取当前Python解释器路径,
                 script_path,       # 被调用脚本路径
                 file_path,         # 输入文件路径
                 "-outputFile",
